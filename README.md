@@ -14,8 +14,6 @@
     <br />
 </div>
 
-
-
 <!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
@@ -34,7 +32,6 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -42,38 +39,47 @@
   </ol>
 </details>
 
+## Contributing for Devs
 
+to install, run:
+
+```
+pip install pre-commit
+```
+
+to init, in your local repo run:
+
+```
+pre-commit install
+```
+
+if you want to check if everything is fine without commit, run:
+
+```
+pre-commit run --all-files
+```
 
 <!-- ABOUT THE PROJECT -->
+
 ## About The Project
 
 [![Product Name Screen Shot][product-screenshot]](https://example.com)
 
-
-
 ### Built With
 
-* [Python](https://python.org)
-* [Docker](https://docker.com)
-
-
+- [Python](https://python.org)
+- [Docker](https://docker.com)
 
 ## Getting Started
 
-
 ### Prerequisites
-
 
 ### Installation
 
-
 ## Usage
-
 
 ## License
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
-
