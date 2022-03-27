@@ -28,7 +28,7 @@ repos:
     rev: 21.5b2
     hooks:
       - id: black
-        args: [--line-length=100]
+        args: [--line-length=79]
 
   - repo: https://gitlab.com/pycqa/flake8
     rev: 3.9.2
@@ -46,6 +46,7 @@ repos:
         args: ["--disallow-untyped-defs", "--ignore-missing-imports"]
         exclude: ^docs/
         verbose: true
+        additional_dependencies: [websockets==10.2]
         entry: bash -c 'mypy "$@" || true' --
 
   - repo: https://github.com/pre-commit/mirrors-prettier
