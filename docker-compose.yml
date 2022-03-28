@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  cans-server:
+    build:
+      context: .
+      target: development
+    container_name: cans-server
+    command: python -u ./server.py
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
+  cans-client:
+    build:
+      context: .
+      target: development
+    container_name: cans-client
+    depends_on:
+      - cans-server
+    command: python -u ./client.py
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
+networks:
+  cans-network:
+    name: cans-network
+    driver: bridge
