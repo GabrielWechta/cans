@@ -11,6 +11,8 @@ services:
       - .env
     networks:
       - cans-network
+    ports:
+      - ${CANS_PORT}:${CANS_PORT}
 
   cans-client:
     build:
