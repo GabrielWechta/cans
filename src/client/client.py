@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import pathlib
+import ssl
 
 import websockets.client as ws
 
@@ -17,10 +19,15 @@ class Client:
         """Connect to the server repeatedly and get a response."""
         host = os.environ["CANS_SERVER_HOSTNAME"]
         port = os.environ["CANS_PORT"]
+        sslContext = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        sslContext.load_verify_locations(
+            # Trust the self-signed certificate for PoC purposes
+            pathlib.Path(__file__).with_name("CansCert.pem")
+        )
         while True:
             print("Connecting to the server...")
             async with ws.connect(
-                f"ws://{host}:{port}",
+                f"wss://{host}:{port}", ssl=sslContext
             ) as conn:
                 resp = await conn.recv()
                 print("Client received: " + str(resp))

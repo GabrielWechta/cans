@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import pathlib
+import ssl
 from datetime import datetime
 
 import websockets.server as ws
@@ -28,10 +30,20 @@ class Server:
         port = os.environ["CANS_PORT"]
         host = os.environ["CANS_SERVER_HOSTNAME"]
 
+        sslContext = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        sslContext.load_cert_chain(
+            # TODO: Resolve the certificate and key paths dynamically using
+            # e.g. .env file (at least serverside, client uses the local
+            # self-signed cert only for proof-of-concept purposes anyway)
+            certfile=pathlib.Path(__file__).with_name("CansCert.pem"),
+            keyfile=pathlib.Path(__file__).with_name("CansKey.pem"),
+        )
+
         async with ws.serve(
             ws_handler=self.ConnectionHandler,
             host=host,
             port=int(port),
+            ssl=sslContext,
         ):
             await stopAwaitable
 

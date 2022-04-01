@@ -1,0 +1,4 @@
+Use a self-signed certificate for development purposes. Note that in a production
+environment a certificate would need to be signed by a trusted certificate authority
+(CA). Also when issuing own certificates keep in mind not to publish the private key as
+is done here. It is only done for development/PoC purposes.
