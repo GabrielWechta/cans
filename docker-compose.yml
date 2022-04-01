@@ -4,8 +4,8 @@ services:
   cans-server:
     build:
       context: .
-      target: development
-    container_name: cans-server
+      target: server_dev
+    container_name: ${CANS_SERVER_HOSTNAME}
     command: python -u ./server.py
     env_file:
       - .env
@@ -17,7 +17,7 @@ services:
   cans-client:
     build:
       context: .
-      target: development
+      target: client_dev
     container_name: cans-client
     depends_on:
       - cans-server

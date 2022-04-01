@@ -46,7 +46,6 @@ repos:
         args: ["--disallow-untyped-defs", "--ignore-missing-imports"]
         exclude: ^docs/
         verbose: true
-        additional_dependencies: [websockets==10.2]
         entry: bash -c 'mypy "$@" || true' --
 
   - repo: https://github.com/pre-commit/mirrors-prettier
