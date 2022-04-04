@@ -6,7 +6,7 @@ services:
       context: .
       target: server_dev
     container_name: ${CANS_SERVER_HOSTNAME}
-    command: python -u ./server.py
+    command: python -u ./Server.py
     env_file:
       - .env
     networks:
@@ -14,14 +14,27 @@ services:
     ports:
       - ${CANS_PORT}:${CANS_PORT}
 
-  cans-client:
+  cans-client-alice:
     build:
       context: .
       target: client_dev
-    container_name: cans-client
+    container_name: cans-client-alice
     depends_on:
       - cans-server
-    command: python -u ./client.py
+    command: python -u ./client.py Alice ${CANS_DEV_ALICE_PUBKEY} ${CANS_DEV_BOB_PUBKEY}
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
+  cans-client-bob:
+    build:
+      context: .
+      target: client_dev
+    container_name: cans-client-bob
+    depends_on:
+      - cans-server
+    command: python -u ./client.py Bob ${CANS_DEV_BOB_PUBKEY} ${CANS_DEV_ALICE_PUBKEY}
     env_file:
       - .env
     networks:
