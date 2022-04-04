@@ -41,22 +41,29 @@
 
 ## Contributing for Devs
 
-to install, run:
+### Install pre-commit hooks
 
-```
+```bash
 pip install pre-commit
-```
-
-to init, in your local repo run:
-
-```
 pre-commit install
 ```
 
-if you want to check if everything is fine without commit, run:
+### Check if everything is fine without committing
 
-```
+```bash
 pre-commit run --all-files
+```
+
+### Set up a local environment file
+
+```bash
+cp .env.example .env
+```
+
+### Build and run
+
+```bash
+docker-compose up --build
 ```
 
 <!-- ABOUT THE PROJECT -->
