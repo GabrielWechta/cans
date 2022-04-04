@@ -13,6 +13,8 @@ services:
       - cans-network
     ports:
       - ${CANS_PORT}:${CANS_PORT}
+    volumes:
+      - ./log:/log
 
   cans-client-alice:
     build:

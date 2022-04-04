@@ -50,6 +50,7 @@ class Client:
             }
 
             if "Alice" in public_key:
+                # Test "peer unavailable" condition
                 await asyncio.sleep(5)
 
             while True:

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from typing import Dict
 
 import websockets.server as ws
@@ -20,6 +21,8 @@ class SessionManager:
         """Construct a session manager instance."""
         # Map public keys to ClientSessions
         self.sessions: Dict[str, ClientSession] = dict()
+        # Get the logger
+        self.log = logging.getLogger("cans-logger")
 
         # TODO: Prepare data structures for mapping keys to event queues
         # TODO: Start DatabaseManager
@@ -55,8 +58,9 @@ class SessionManager:
             sender = message["sender"]
             receiver = message["receiver"]
 
-            print(f"Handling upstream message from {sender} to {receiver}")
-
+            self.log.debug(
+                f"Handling upstream message from {sender} to {receiver}"
+            )
             await self.__route_message(message)
 
     async def __handle_downstream(self, session: ClientSession) -> None:
@@ -67,7 +71,7 @@ class SessionManager:
             sender = event["sender"]
             payload = event["payload"]
 
-            print(f"Received message '{payload}' from {sender}")
+            self.log.debug(f"Received message '{payload}' from {sender}")
 
             # Send the message downstream to the client
             await session.connection.send(json.JSONEncoder().encode(event))
@@ -79,9 +83,8 @@ class SessionManager:
         receiver = message["receiver"]
 
         if receiver in self.sessions.keys():
-
+            # Send the message to the appropriate receiver
             await self.sessions[receiver].event_queue.put(message)
-
         elif message["sender"] != "server":
             # Do not reroute server messages so as to not get
             # into an infinite recursion
@@ -91,3 +94,6 @@ class SessionManager:
                 "payload": f"Peer {receiver} unavailable!",
             }
             await self.__route_message(resp)
+        else:
+            # Drop orphaned server message
+            self.log.warning(f"Failed to route server message to {receiver}")

@@ -5,6 +5,7 @@ them to connection handlers/callbacks.
 """
 
 import asyncio
+import logging
 import pathlib
 import ssl
 
@@ -21,9 +22,12 @@ class ConnectionListener:
         self.hostname = hostname
         self.port = port
         self.session_manager = SessionManager()
+        self.log = logging.getLogger("cans-logger")
 
     async def run(self) -> None:
         """Open a public port and listen for connections."""
+        self.log.info(f"Hostname is {self.hostname}")
+
         sslContext = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         sslContext.load_cert_chain(
             # TODO: Resolve the certificate and key paths dynamically using
@@ -31,6 +35,10 @@ class ConnectionListener:
             # self-signed cert only for proof-of-concept purposes anyway)
             certfile=pathlib.Path(__file__).with_name("CansCert.pem"),
             keyfile=pathlib.Path(__file__).with_name("CansKey.pem"),
+        )
+
+        self.log.info(
+            f"SSL context established. Opening public port: {self.port}..."
         )
 
         async with ws.serve(
@@ -46,14 +54,17 @@ class ConnectionListener:
         self, conn: ws.WebSocketServerProtocol
     ) -> None:
         """Handle a new incoming connection."""
-        print(f"Accepted connection from {conn.remote_address}")
+        self.log.debug(
+            f"Accepted connection from {conn.remote_address[0]}:"
+            f"{conn.remote_address[1]}"
+        )
 
         # Authenticate the user
         try:
             public_key = await self.__authenticate_user(conn)
-            print(
-                f"Successfully authenticated {conn.remote_address}"
-                + f" with public key {public_key}"
+            self.log.debug(
+                f"Successfully authenticated user at {conn.remote_address[0]}:"
+                + f"{conn.remote_address[1]} with public key {public_key}"
             )
             # User has been successfully authenticated,
             # delegate further handling to the session
@@ -61,13 +72,19 @@ class ConnectionListener:
             await self.session_manager.authed_user_entry(conn, public_key)
         except CansServerAuthFailed:
             # TODO: Log auth failure
+            self.log.error(
+                f"User authentication failed: {conn.remote_address[0]}:"
+                + f"{conn.remote_address[1]}"
+            )
             return
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
     ) -> str:  # TODO: Public key type
         """Run authentication protocol with the user."""
-        print(f"__authenticate_user{conn.remote_address}: Implement me!")
+        self.log.error(
+            f"__authenticate_user{conn.remote_address}: Implement me!"
+        )
         # TODO: Get the public key from the user as well as proof of
         #       knowledge of the corresponding private key
 
