@@ -3,7 +3,6 @@
 import asyncio
 import json
 import os
-import pathlib
 import ssl
 import sys
 
@@ -24,7 +23,7 @@ class Client:
         sslContext = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         sslContext.load_verify_locations(
             # Trust the self-signed certificate for PoC purposes
-            pathlib.Path(__file__).with_name("CansCert.pem")
+            "certs/CansCert.pem"
         )
         print("Connecting to the server...")
         async with ws.connect(f"wss://{host}:{port}", ssl=sslContext) as conn:

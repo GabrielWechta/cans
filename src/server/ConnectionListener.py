@@ -6,12 +6,13 @@ them to connection handlers/callbacks.
 
 import asyncio
 import logging
-import pathlib
 import ssl
 
 import websockets.server as ws
 from exceptions.CansServerAuthFailed import CansServerAuthFailed
 from SessionManager import SessionManager
+
+from common.types.PubKey import PubKey, PubKeyDigest
 
 
 class ConnectionListener:
@@ -33,8 +34,8 @@ class ConnectionListener:
             # TODO: Resolve the certificate and key paths dynamically using
             # e.g. .env file (at least serverside, client uses the local
             # self-signed cert only for proof-of-concept purposes anyway)
-            certfile=pathlib.Path(__file__).with_name("CansCert.pem"),
-            keyfile=pathlib.Path(__file__).with_name("CansKey.pem"),
+            certfile="certs/CansCert.pem",
+            keyfile="certs/CansKey.pem",
         )
 
         self.log.info(
@@ -62,16 +63,19 @@ class ConnectionListener:
         # Authenticate the user
         try:
             public_key = await self.__authenticate_user(conn)
+            public_key_digest = self.__digest_key(public_key)
             self.log.debug(
                 f"Successfully authenticated user at {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]} with public key {public_key}"
+                + f" (digest: {public_key_digest})"
             )
             # User has been successfully authenticated,
             # delegate further handling to the session
             # manager
-            await self.session_manager.authed_user_entry(conn, public_key)
+            await self.session_manager.authed_user_entry(
+                conn, public_key_digest
+            )
         except CansServerAuthFailed:
-            # TODO: Log auth failure
             self.log.error(
                 f"User authentication failed: {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]}"
@@ -80,7 +84,7 @@ class ConnectionListener:
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
-    ) -> str:  # TODO: Public key type
+    ) -> PubKey:
         """Run authentication protocol with the user."""
         self.log.error(
             f"__authenticate_user{conn.remote_address}: Implement me!"
@@ -92,3 +96,7 @@ class ConnectionListener:
         # with no further auth
         public_key = await conn.recv()
         return str(public_key)
+
+    def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
+        # TODO: Call src/common code to calculate the hash over the key
+        return public_key

@@ -5,8 +5,11 @@ import json
 import logging
 from typing import Dict
 
-import websockets.server as ws
 from ClientSession import ClientSession
+from websockets.exceptions import ConnectionClosed
+from websockets.server import WebSocketServerProtocol
+
+from common.types.PubKey import PubKeyDigest
 
 
 class SessionManager:
@@ -29,8 +32,8 @@ class SessionManager:
         pass
 
     async def authed_user_entry(
-        self, conn: ws.WebSocketServerProtocol, public_key: str
-    ) -> None:  # TODO: Fix the publicKey's type
+        self, conn: WebSocketServerProtocol, public_key_digest: PubKeyDigest
+    ) -> None:
         """Handle an authenticated user."""
         # Suppose Alice has just been authenticated
         # Alice sends her subscriber list to the server
@@ -38,16 +41,27 @@ class SessionManager:
         # TODO: Send subscription event EVENT_LOGIN(Alice) to each user who
         # subscribes for Alice events (fetch subscribers[Alice] from the DB)
 
-        session = ClientSession(conn, public_key)
+        session = ClientSession(conn, public_key_digest)
 
         # NOTE: For PoC purposes use a simple dictionary
-        self.sessions[public_key] = session
+        self.sessions[public_key_digest] = session
 
-        # Use fork-join semantics to run both upstream and downstream handlers
-        # concurrently and wait for both to terminate
-        await asyncio.gather(
-            self.__handle_upstream(session), self.__handle_downstream(session)
-        )
+        remote_host = conn.remote_address[0]
+        remote_port = conn.remote_address[1]
+
+        try:
+            # Use fork-join semantics to run both upstream and
+            # downstream handlers concurrently and wait for both
+            # to terminate
+            await asyncio.gather(
+                self.__handle_upstream(session),
+                self.__handle_downstream(session),
+            )
+        except ConnectionClosed as e:
+            self.log.info(
+                f"Connection with {remote_host}:{remote_port}"
+                + f" closed with code {e.code}"
+            )
 
     async def __handle_upstream(self, session: ClientSession) -> None:
         """Handle upstream traffic, i.e. client to server."""
