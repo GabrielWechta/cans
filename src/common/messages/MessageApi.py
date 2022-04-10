@@ -1,38 +1,29 @@
 """Define public messaging API of the CANS application."""
 
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
-from typing import Any
+from typing import Union
 
-from common.messages.CansMessage import CansMessage
+from websockets.client import WebSocketClientProtocol
+from websockets.server import WebSocketServerProtocol
+
 from common.messages.CansSerial import CansSerial
-from common.messages.exceptions.CansDeserializationError import (
-    CansDeserializationError,
-)
-from common.messages.exceptions.CansInternalError import CansInternalError
+from common.messages.MessageExceptions import CansDeserializationError
+from common.messages.Messages import CansMessage
 
 
-async def cans_recv(socket: Any) -> CansMessage:
-    """Receive a CANS message from a socket.
-
-    Ducktype the socket as client and server
-    use different representations.
-    """
-    if not hasattr(socket, "recv"):
-        raise CansInternalError("cans_recv called with an invalid object")
-
+async def cans_recv(
+    socket: Union[WebSocketClientProtocol, WebSocketServerProtocol]
+) -> CansMessage:
+    """Receive a CANS message from a socket."""
     serial = await socket.recv()
     return __deserialize(serial)
 
 
-async def cans_send(msg: CansMessage, socket: Any) -> None:
-    """Push a CANS message to a socket.
-
-    Ducktype the socket as client and server
-    use different representations.
-    """
-    if not hasattr(socket, "send"):
-        raise CansInternalError("cans_send called with an invalid object")
-
+async def cans_send(
+    msg: CansMessage,
+    socket: Union[WebSocketClientProtocol, WebSocketServerProtocol],
+) -> None:
+    """Push a CANS message to a socket."""
     serial = __serialize(msg)
     await socket.send(serial)
 

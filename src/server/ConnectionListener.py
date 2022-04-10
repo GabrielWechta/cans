@@ -9,13 +9,13 @@ import logging
 import ssl
 
 import websockets.server as ws
-from exceptions.CansServerAuthFailed import CansServerAuthFailed
+from ServerExceptions import CansServerAuthFailed
 from SessionManagerServer import SessionManagerServer
 
 from common.keys.PubKey import PubKey
 from common.keys.PubKeyDigest import PubKeyDigest
 from common.messages.MessageApi import cans_recv
-from common.messages.ServerHello import ServerHello
+from common.messages.Messages import ServerHello
 
 
 class ConnectionListener:

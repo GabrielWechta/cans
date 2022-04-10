@@ -5,15 +5,13 @@ import logging
 from typing import Dict
 
 from ClientSession import ClientSession
-from events.EventType import EventType
-from events.SessionEvent import SessionEvent
+from SessionEvent import EventType, SessionEvent
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
 from common.keys.PubKeyDigest import PubKeyDigest
-from common.messages.CansMessage import CansMessage
 from common.messages.MessageApi import cans_recv, cans_send
-from common.messages.PeerUnavailable import PeerUnavailable
+from common.messages.Messages import CansMessage, PeerUnavailable
 
 
 class SessionManagerServer:
@@ -87,7 +85,7 @@ class SessionManagerServer:
             event: SessionEvent = await self.__get_event(session)
 
             if event.event_type == EventType.MESSAGE:
-                message = event.payload
+                message: CansMessage = event.payload
 
                 self.log.debug(
                     f"Received message '{message.payload}' from"

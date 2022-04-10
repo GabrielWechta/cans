@@ -11,8 +11,7 @@ from KeyManager import KeyManager
 from common.keys.PubKeyDigest import PubKeyDigest
 from common.messages.CansMsgId import CansMsgId
 from common.messages.MessageApi import cans_recv, cans_send
-from common.messages.ServerHello import ServerHello
-from common.messages.UserMessage import UserMessage
+from common.messages.Messages import ServerHello, UserMessage
 
 
 class SessionManagerClient:
