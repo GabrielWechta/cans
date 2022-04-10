@@ -10,9 +10,12 @@ import ssl
 
 import websockets.server as ws
 from exceptions.CansServerAuthFailed import CansServerAuthFailed
-from SessionManager import SessionManager
+from SessionManagerServer import SessionManagerServer
 
-from common.types.PubKey import PubKey, PubKeyDigest
+from common.keys.PubKey import PubKey
+from common.keys.PubKeyDigest import PubKeyDigest
+from common.messages.MessageApi import cans_recv
+from common.messages.ServerHello import ServerHello
 
 
 class ConnectionListener:
@@ -22,7 +25,7 @@ class ConnectionListener:
         """Construct a connection listener instance."""
         self.hostname = hostname
         self.port = port
-        self.session_manager = SessionManager()
+        self.session_manager = SessionManagerServer()
         self.log = logging.getLogger("cans-logger")
 
     async def run(self) -> None:
@@ -94,8 +97,8 @@ class ConnectionListener:
 
         # NOTE: In the alpha-version user simply sends their public key
         # with no further auth
-        public_key = await conn.recv()
-        return str(public_key)
+        message: ServerHello = await cans_recv(conn)
+        return message.payload["public_key"]
 
     def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
         # TODO: Call src/common code to calculate the hash over the key

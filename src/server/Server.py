@@ -1,4 +1,4 @@
-"""Main backend application entry point."""
+"""Backend application entry point."""
 
 import asyncio
 import logging

@@ -5,7 +5,7 @@ from typing import List
 
 import websockets.server as ws
 
-from common.types.PubKey import PubKeyDigest
+from common.keys.PubKeyDigest import PubKeyDigest
 
 
 class ClientSession:
