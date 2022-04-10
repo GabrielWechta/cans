@@ -1,9 +1,21 @@
 """Define CANS message formats."""
 
+from enum import IntEnum, unique
 from typing import Any
 
-from common.keys.PubKeyDigest import PubKeyDigest
-from common.messages.CansMsgId import CansMsgId
+from common.keys import PubKeyDigest
+
+CansSerial = str
+
+
+@unique
+class CansMsgId(IntEnum):
+    """CANS message ID."""
+
+    USER_MESSAGE = 0
+    SHARE_CONTACTS = 1
+    SERVER_HELLO = 2
+    PEER_UNAVAILABLE = 3
 
 
 class CansMessage:
@@ -21,7 +33,7 @@ class CansMessage:
             """Create a CANS header."""
             self.sender: PubKeyDigest = None
             self.receiver: PubKeyDigest = None
-            self.msg_id = None
+            self.msg_id: CansMsgId = CansMsgId.USER_MESSAGE
 
 
 class UserMessage(CansMessage):

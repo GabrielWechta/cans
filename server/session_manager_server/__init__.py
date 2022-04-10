@@ -4,17 +4,17 @@ import asyncio
 import logging
 from typing import Dict
 
-from ClientSession import ClientSession
-from SessionEvent import EventType, SessionEvent
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from common.keys.PubKeyDigest import PubKeyDigest
-from common.messages.MessageApi import cans_recv, cans_send
-from common.messages.Messages import CansMessage, PeerUnavailable
+from common.keys import PubKeyDigest
+from common.messages import CansMessage, PeerUnavailable, cans_recv, cans_send
+
+from .client_session import ClientSession
+from .session_event import EventType, SessionEvent
 
 
-class SessionManagerServer:
+class SessionManager:
     """Client session manager.
 
     Manage client sessions and maintain a mapping between

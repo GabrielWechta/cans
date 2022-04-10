@@ -7,7 +7,7 @@ fetching/committing application-specific data.
 import logging
 
 
-class DatabaseManagerClient:
+class DatabaseManager:
     """Clientside database manager."""
 
     def __init__(self) -> None:

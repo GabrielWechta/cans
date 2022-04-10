@@ -6,15 +6,19 @@ import ssl
 import sys  # TODO: Not needed after PoC
 
 import websockets.client as ws
-from KeyManager import KeyManager
+from key_manager import KeyManager
 
-from common.keys.PubKeyDigest import PubKeyDigest
-from common.messages.CansMsgId import CansMsgId
-from common.messages.MessageApi import cans_recv, cans_send
-from common.messages.Messages import ServerHello, UserMessage
+from common.keys import PubKeyDigest
+from common.messages import (
+    CansMsgId,
+    ServerHello,
+    UserMessage,
+    cans_recv,
+    cans_send,
+)
 
 
-class SessionManagerClient:
+class SessionManager:
     """Session manager.
 
     Manage a session with the server, listen for server

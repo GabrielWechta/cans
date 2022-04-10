@@ -3,10 +3,10 @@
 import asyncio
 import os
 
-from DatabaseManagerClient import DatabaseManagerClient
-from KeyManager import KeyManager
-from SessionManagerClient import SessionManagerClient
-from UserInterface import UserInterface
+from database_manager_client import DatabaseManager
+from key_manager import KeyManager
+from session_manager_client import SessionManager
+from user_interface import UserInterface
 
 
 class Client:
@@ -31,13 +31,11 @@ class Client:
 
         self.event_loop = asyncio.get_event_loop()
         self.key_manager = KeyManager()
-        self.db_manager = DatabaseManagerClient()
+        self.db_manager = DatabaseManager()
 
         # Session manager is the last needed component
         # TODO: Perhaps resolve this dependency more cleanly or get rid of it
-        self.session_manager = SessionManagerClient(
-            key_manager=self.key_manager
-        )
+        self.session_manager = SessionManager(key_manager=self.key_manager)
 
     def run(self) -> None:
         """Run the client application."""

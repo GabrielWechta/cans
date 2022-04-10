@@ -9,13 +9,16 @@ import logging
 import ssl
 
 import websockets.server as ws
-from ServerExceptions import CansServerAuthFailed
-from SessionManagerServer import SessionManagerServer
+from session_manager_server import SessionManager
 
-from common.keys.PubKey import PubKey
-from common.keys.PubKeyDigest import PubKeyDigest
-from common.messages.MessageApi import cans_recv
-from common.messages.Messages import ServerHello
+from common.keys import PubKey, PubKeyDigest
+from common.messages import ServerHello, cans_recv
+
+
+class CansServerAuthFailed(Exception):
+    """Error thrown on authentication failure."""
+
+    pass
 
 
 class ConnectionListener:
@@ -25,7 +28,7 @@ class ConnectionListener:
         """Construct a connection listener instance."""
         self.hostname = hostname
         self.port = port
-        self.session_manager = SessionManagerServer()
+        self.session_manager = SessionManager()
         self.log = logging.getLogger("cans-logger")
 
     async def run(self) -> None:

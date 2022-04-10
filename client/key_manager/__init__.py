@@ -2,8 +2,7 @@
 
 import sys  # TODO: Remove after PoC
 
-from common.keys.PubKey import PubKey
-from common.keys.PubKeyDigest import PubKeyDigest
+from common.keys import PubKey, PubKeyDigest
 
 
 class KeyManager:

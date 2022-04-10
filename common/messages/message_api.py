@@ -6,16 +6,15 @@ from typing import Union
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
 
-from common.messages.CansSerial import CansSerial
-from common.messages.MessageExceptions import CansDeserializationError
-from common.messages.Messages import CansMessage
+from .message_exceptions import CansDeserializationError
+from .messages import CansMessage, CansSerial
 
 
 async def cans_recv(
     socket: Union[WebSocketClientProtocol, WebSocketServerProtocol]
 ) -> CansMessage:
     """Receive a CANS message from a socket."""
-    serial = await socket.recv()
+    serial = str(await socket.recv())
     return __deserialize(serial)
 
 
