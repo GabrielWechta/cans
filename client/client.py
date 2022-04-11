@@ -7,6 +7,7 @@ from database_manager_client import DatabaseManager
 from key_manager import KeyManager
 from session_manager_client import SessionManager
 from user_interface import UserInterface
+from osal import OSAL
 
 
 class Client:
@@ -17,6 +18,8 @@ class Client:
         # TODO: Parse environment variables
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
+        self.osal = OSAL()
+        print(self.osal.hardware_fingerprint())
 
         self.__do_logger_config()
 
