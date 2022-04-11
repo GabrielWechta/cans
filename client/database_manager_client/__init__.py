@@ -1,4 +1,4 @@
-"""Serverside database manager.
+"""Clientside database manager.
 
 Expose an API for interacting with the database and
 fetching/committing application-specific data.
@@ -7,9 +7,9 @@ fetching/committing application-specific data.
 import logging
 
 
-class DatabaseManagerServer:
-    """Serverside database manager."""
+class DatabaseManager:
+    """Clientside database manager."""
 
     def __init__(self) -> None:
-        """Construct the serverside database manager."""
+        """Construct the clientside database manager."""
         self.log = logging.getLogger("cans-logger")

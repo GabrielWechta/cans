@@ -9,10 +9,16 @@ import logging
 import ssl
 
 import websockets.server as ws
-from exceptions.CansServerAuthFailed import CansServerAuthFailed
-from SessionManager import SessionManager
+from session_manager_server import SessionManager
 
-from common.types.PubKey import PubKey, PubKeyDigest
+from common.keys import PubKey, PubKeyDigest
+from common.messages import ServerHello, cans_recv
+
+
+class CansServerAuthFailed(Exception):
+    """Error thrown on authentication failure."""
+
+    pass
 
 
 class ConnectionListener:
@@ -94,8 +100,8 @@ class ConnectionListener:
 
         # NOTE: In the alpha-version user simply sends their public key
         # with no further auth
-        public_key = await conn.recv()
-        return str(public_key)
+        message: ServerHello = await cans_recv(conn)
+        return message.payload["public_key"]
 
     def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
         # TODO: Call src/common code to calculate the hash over the key

@@ -1,11 +1,11 @@
-"""Main backend application entry point."""
+"""Backend application entry point."""
 
 import asyncio
 import logging
 import logging.handlers
 import os
 
-from ConnectionListener import ConnectionListener
+from connection_listener import ConnectionListener
 
 
 class Server:

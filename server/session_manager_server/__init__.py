@@ -1,15 +1,17 @@
-"""Client session manager."""
+"""Serverside session manager."""
 
 import asyncio
-import json
 import logging
 from typing import Dict
 
-from ClientSession import ClientSession
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from common.types.PubKey import PubKeyDigest
+from common.keys import PubKeyDigest
+from common.messages import CansMessage, PeerUnavailable, cans_recv, cans_send
+
+from .client_session import ClientSession
+from .session_event import EventType, SessionEvent
 
 
 class SessionManager:
@@ -62,15 +64,15 @@ class SessionManager:
                 f"Connection with {remote_host}:{remote_port}"
                 + f" closed with code {e.code}"
             )
+            # TODO: Clean up the sessions dictionary
+            # TODO: Send LOGOUT events to subscribers
 
     async def __handle_upstream(self, session: ClientSession) -> None:
         """Handle upstream traffic, i.e. client to server."""
         while True:
-            message = json.JSONDecoder().decode(
-                str(await session.connection.recv())
-            )
-            sender = message["sender"]
-            receiver = message["receiver"]
+            message = await cans_recv(session.connection)
+            sender = message.header.sender
+            receiver = message.header.receiver
 
             self.log.debug(
                 f"Handling upstream message from {sender} to {receiver}"
@@ -80,34 +82,63 @@ class SessionManager:
     async def __handle_downstream(self, session: ClientSession) -> None:
         """Handle downstream traffic, i.e. server to client."""
         while True:
-            event = await session.event_queue.get()
+            event: SessionEvent = await self.__get_event(session)
 
-            sender = event["sender"]
-            payload = event["payload"]
+            if event.event_type == EventType.MESSAGE:
+                message: CansMessage = event.payload
 
-            self.log.debug(f"Received message '{payload}' from {sender}")
+                self.log.debug(
+                    f"Received message '{message.payload}' from"
+                    + f" '{message.header.sender}'"
+                )
 
-            # Send the message downstream to the client
-            await session.connection.send(json.JSONEncoder().encode(event))
+                # Send the message downstream to the client
+                await cans_send(message, session.connection)
+            else:
+                self.log.debug(f"Unsupported event type: {event.event_type}")
 
-    async def __route_message(
-        self, message: dict
-    ) -> None:  # TODO: Use custom type for the message
+    async def __route_message(self, message: CansMessage) -> None:
         """Route the message to the receiver."""
-        receiver = message["receiver"]
+        self.log.debug(
+            f"Routing message from '{message.header.sender}'"
+            + f" to '{message.header.receiver}'"
+        )
 
-        if receiver in self.sessions.keys():
-            # Send the message to the appropriate receiver
-            await self.sessions[receiver].event_queue.put(message)
-        elif message["sender"] != "server":
+        if message.header.receiver in self.sessions.keys():
+            # Wrap the message in an event and
+            # send it to the appropriate receiver
+            self.log.debug(
+                f"Receiver '{message.header.receiver}' online."
+                + " Sending event..."
+            )
+            event = SessionEvent(payload=message)
+            await self.__send_event(
+                event, self.sessions[message.header.receiver]
+            )
+        elif message.header.sender != "":
             # Do not reroute server messages so as to not get
             # into an infinite recursion
-            resp = {
-                "sender": "server",
-                "receiver": message["sender"],
-                "payload": f"Peer {receiver} unavailable!",
-            }
-            await self.__route_message(resp)
+            notification = PeerUnavailable(
+                receiver=message.header.sender, peer=message.header.receiver
+            )
+            self.log.debug(
+                f"Receiver '{message.header.receiver}' not available."
+                + " Sending notification back to"
+                + f" '{message.header.sender}'..."
+            )
+            await self.__route_message(notification)
         else:
             # Drop orphaned server message
-            self.log.warning(f"Failed to route server message to {receiver}")
+            self.log.warning(
+                f"Failed to route server message to {message.header.receiver}"
+            )
+
+    async def __send_event(
+        self, event: SessionEvent, session: ClientSession
+    ) -> None:
+        """Send an event."""
+        await session.event_queue.put(event)
+
+    async def __get_event(self, session: ClientSession) -> SessionEvent:
+        """Receive an event."""
+        return await session.event_queue.get()
