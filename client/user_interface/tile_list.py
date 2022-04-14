@@ -177,7 +177,7 @@ class TileList:
                 self.current_id += 1
 
     def index(self, tile: Tile) -> int:
-        """Inner method."""
+        """Return index of Tile."""
         return self.tiles.index(tile)
 
     def __len__(self) -> int:
