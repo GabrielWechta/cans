@@ -4,7 +4,7 @@ import asyncio
 from blessed import Terminal
 
 from ..user_interface import UserInterface
-from .tile import Tile
+from .tiles import Tile
 from .tiling_managers import MonadTallLayout
 from .view import View
 
@@ -74,6 +74,10 @@ asyncio.run(monad.render())
 term.inkey()
 
 monad.cmd_left()
+asyncio.run(monad.render())
+term.inkey()
+
+monad.cmd_up()
 asyncio.run(monad.render())
 term.inkey()
 

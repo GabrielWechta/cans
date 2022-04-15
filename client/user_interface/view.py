@@ -6,7 +6,7 @@ Divides terminal into independent windows
 
 from blessed import Terminal
 
-from .tile import Tile
+from .tiles import Tile
 
 
 class View:

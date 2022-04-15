@@ -1,9 +1,10 @@
 """Contains tiling manager classes used by View."""
 import math
-from typing import List
+from collections import namedtuple
+from typing import List, Optional
 
-from .tile import Tile
 from .tile_list import TileList
+from .tiles import Tile
 
 
 class MonadTallLayout:
@@ -115,17 +116,26 @@ class MonadTallLayout:
 
     # no one asked + L + touch grass + no maidens + ratio
     ratio = 0.75
+    """
+    The percent of the screen-space the master pane should occupy
+    """
     default_ratio = 0.75
-    """The percent of the screen-space the master pane should occupy
-    by default."""
+    """
+    The percent of the screen-space the master pane should occupy
+    by default.
+    """
     min_ratio = 0.25
-    """The percent of the screen-space the master pane should occupy
-    at minimum."""
+    """
+    The percent of the screen-space the master pane should occupy
+    at minimum.
+    """
     max_ratio = 0.75
-    """The percent of the screen-space the master pane should occupy
-    at maximum."""
+    """
+    The percent of the screen-space the master pane should occupy
+    at maximum.
+    """
     min_secondary_size = 10
-    """minimum size in pixel for a secondary pane window """
+    """Minimum size in pixel for a secondary pane window """
     align = _right
     """Which side master plane will be placed
     "(one of `_left` or `_right`)"""
@@ -141,40 +151,48 @@ class MonadTallLayout:
         top - at the top of the stack,
         bottom - at the bottom of the stack
     """
+    screen_rect_tuple = namedtuple("screen_rect_tuple", "width height x y")
+    """Named tuple structure for screen rect"""
 
     def __init__(self, width: int, height: int, x: int, y: int) -> None:
         """Init the view."""
         self.relative_sizes: List[float] = []
-        self.screen_rect = (width, height, x, y)
+        self.screen_rect = MonadTallLayout.screen_rect_tuple(
+            width=width, height=height, x=x, y=y
+        )
 
         print(self.screen_rect)
         self.tiles = TileList()
 
-    # def clone(self) -> MonadTallLayout:
-    #     """Clone layout for other Views."""
-    #     c = MonadTallLayout(
-    #         width=self.screen_rect[0],
-    #         height=self.screen_rect[1],
-    #         x=self.screen_rect[2],
-    #         y=self.screen_rect[3],
-    #     )
-    #     c.relative_sizes = []
-    #     c.screen_rect = self.screen_rect
-    #     c.ratio = self.ratio
-    #     c.align = self.align
-    #     return c
+    # 'Hack' for linter coz it has a problem :)
+    def clone(self) -> "MonadTallLayout":
+        """Clone layout for other Views."""
+        c = MonadTallLayout(
+            width=self.screen_rect[0],
+            height=self.screen_rect[1],
+            x=self.screen_rect[2],
+            y=self.screen_rect[3],
+        )
+        c.relative_sizes = []
+        c.screen_rect = self.screen_rect
+        c.ratio = self.ratio
+        c.align = self.align
+        return c
 
     def _get_relative_size_from_absolute(self, absolute_size: int) -> float:
-        return absolute_size / self.screen_rect[1]
+        return absolute_size / self.screen_rect.height
 
     def _get_absolute_size_from_relative(self, relative_size: float) -> int:
-        return int(relative_size * self.screen_rect[1])
+        return int(relative_size * self.screen_rect.height)
 
     def screen_rect_change(
         self, width: int, height: int, x: int, y: int
     ) -> None:
         """Set the screen rect and redraw the screen."""
-        self.screen_rect = (width, height, x, y)
+        self.screen_rect = MonadTallLayout.screen_rect_tuple(
+            width=width, height=height, x=x, y=y
+        )
+
         self.layout_all()
 
     @property
@@ -622,20 +640,26 @@ class MonadTallLayout:
         """Shuffle the tile up the stack."""
         self.tiles.shuffle_up()
         self.layout_all()
-        self.focus(self.tiles.current_tile)
+        target = self.tiles.current_tile
+        if target:
+            self.focus(target)
 
     def cmd_shuffle_down(self) -> None:
         """Shuffle the tile down the stack."""
         self.tiles.shuffle_down()
         self.layout_all()
-        self.focus(self.tiles[self.focused])
+        target = self.tiles.current_tile
+        if target:
+            self.focus(self.tiles[self.focused])
 
     def cmd_flip(self) -> None:
         """Flip the layout horizontally."""
         self.align = self._left if self.align == self._right else self._right
         self.layout_all()
 
-    def _get_closest(self, x: int, y: int, tiles: List[Tile]) -> Tile:
+    def _get_closest(
+        self, x: int, y: int, tiles: List[Tile]
+    ) -> Optional[Tile]:
         """Get closest tile to a point x,y."""
         target = min(
             tiles,
@@ -654,19 +678,23 @@ class MonadTallLayout:
         """Swap current tile with closest tile to the left."""
         # TODO: fix
         tile = self.tiles.current_tile
-        x, y = tile.x, tile.y
-        candidates = [c for c in self.tiles if (c.x < x)]
-        target = self._get_closest(x=x, y=y, tiles=candidates)
-        self.cmd_swap(tile, target)
+        if tile:
+            x, y = tile.x, tile.y
+            candidates = [c for c in self.tiles if (c.x < x)]
+            target = self._get_closest(x=x, y=y, tiles=candidates)
+            if target:
+                self.cmd_swap(tile, target)
 
     def cmd_swap_right(self) -> None:
         """Swap current tile with closest tile to the right."""
         # TODO: fix
         tile = self.tiles.current_tile
-        x, y = tile.x, tile.y
-        candidates = [c for c in self.tiles if (c.x > x)]
-        target = self._get_closest(x=x, y=y, tiles=candidates)
-        self.cmd_swap(tile, target)
+        if tile:
+            x, y = tile.x, tile.y
+            candidates = [c for c in self.tiles if (c.x > x)]
+            target = self._get_closest(x=x, y=y, tiles=candidates)
+            if target:
+                self.cmd_swap(tile, target)
 
     def cmd_swap_main(self) -> None:
         """Swap current tile to main pane."""
@@ -680,45 +708,85 @@ class MonadTallLayout:
         """Focus on the closest tile to the left of the current tile."""
         # TODO: fix
         tile = self.tiles.current_tile
-        x, y = tile.x, tile.y
-        candidates = [c for c in self.tiles if (c.x < x)]
-        print(candidates)
-        target = self._get_closest(x=x, y=y, tiles=candidates)
-        print(target.info())
-        self.focus(target)
+        if tile:
+            x, y = tile.x, tile.y
+            candidates = [c for c in self.tiles if (c.x < x)]
+            print(candidates)
+            target = self._get_closest(x=x, y=y, tiles=candidates)
+            if target:
+                print(target.info())
+                self.focus(target)
 
     def cmd_right(self) -> None:
         """Focus on the closest tile to the right of the current tile."""
         # TODO: fix
         tile = self.tiles.current_tile
-        x, y = tile.x, tile.y
-        candidates = [c for c in self.tiles if (c.x > x)]
-        print(candidates)
-        target = self._get_closest(x=x, y=y, tiles=candidates)
-        print(target.info())
-        self.focus(target)
-
-    def cmd_up(self) -> None:
-        """Focus on the closest tile up of the current tile."""
-        # TODO: fix
-        tile = self.tiles.current_tile
-        target = self.tiles.focus_previous(tile)
-        self.focus(target)
-
-    def cmd_down(self) -> None:
-        """Focus on the closest tile down of the current tile."""
-        # TODO: fix
-        tile = self.tiles.current_tile
-        target = self.tiles.focus_next(tile)
-        self.focus(target)
+        if tile:
+            x, y = tile.x, tile.y
+            candidates = [c for c in self.tiles if (c.x > x)]
+            print(candidates)
+            target = self._get_closest(x=x, y=y, tiles=candidates)
+            if target:
+                print(target.info())
+                self.focus(target)
 
     def focus(self, tile: Tile) -> None:
-        """Focuses the selected tile."""
-        # TODO: change how focusing works
-        self.tiles.focus(tile)
+        """Focus selected tile."""
+        self.tiles.current_tile = tile
+        self.layout_all()
+
+    def focus_first(self) -> Tile:
+        """
+        Return the first tile in Layout.
+
+        It DOES NOT focus the tile itself, this is done by caller.
+        """
+        return self.tiles.focus_first()
+
+    def focus_last(self) -> Tile:
+        """
+        Return the last tile in Layout.
+
+        It DOES NOT focus the tile itself, this is done by caller.
+        """
+        return self.tiles.focus_last()
+
+    def focus_next(self, tile: Tile) -> Optional[Tile]:
+        """
+        Return Tile after the supplied tile in Layout.
+
+        It DOES NOT focus the tile itself, this is done by caller.
+        """
+        return self.tiles.focus_next(tile)
+
+    def focus_previous(self, tile: Tile) -> Optional[Tile]:
+        """
+        Return Tile after the supplied tile in Layout.
+
+        It DOES NOT focus the tile itself, this is done by caller.
+        """
+        return self.tiles.focus_previous(tile)
+
+    def cmd_up(self) -> None:
+        """Focus (select) the tile before the focused one."""
+        if self.tiles.current_tile is None:
+            return
+        tile = (
+            self.focus_previous(self.tiles.current_tile) or self.focus_last()
+        )
+        self.focus(tile)
+
+    def cmd_down(self) -> None:
+        """Focus (select) the tile after the focused one."""
+        if self.tiles.current_tile is None:
+            return
+        tile = self.focus_next(self.tiles.current_tile) or self.focus_first()
+        self.focus(tile)
 
     async def render(self) -> None:
         """Render all tiles on screen."""
         for tile in self.tiles:
-            focused = tile is self.tiles.current_tile
+            i1 = self.tiles.index(tile)
+            i2 = self.tiles.current_index
+            focused = (i1 == i2)
             await tile.render(focused)

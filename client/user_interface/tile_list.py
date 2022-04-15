@@ -1,8 +1,8 @@
 """TileList class."""
 from collections.abc import Iterator
-from typing import List
+from typing import List, Optional
 
-from .tile import Tile
+from .tiles import Tile
 
 
 class TileList:
@@ -19,16 +19,30 @@ class TileList:
         self.tiles: List[Tile] = []
 
     @property
-    def current_tile(self) -> Tile:
+    def current_index(self) -> int:
+        """Get current (focused tile) index."""
+        return self.current_id
+
+    @current_index.setter
+    def current_index(self, x: int) -> int:
+        if len(self):
+            self.current_id = abs(x % len(self))
+        else:
+            self.current_id = 0
+        return self.current_id
+
+    @property
+    def current_tile(self) -> Optional[Tile]:
         """Getter for current tile."""
         if not self.tiles:
-            raise Exception("No current tile")
+            return None
         return self.tiles[self.current_id]
 
     @current_tile.setter
     def current_tile(self, tile: Tile) -> None:
         """Setter for current tile."""
-        self.current_id = self.tiles.index(tile)
+        i = self.tiles.index(tile)
+        self.current_id = i
 
     def focus(self, tile: Tile) -> None:
         """
@@ -42,23 +56,23 @@ class TileList:
         """Return the first tile in collection."""
         return self[0]
 
-    def focus_next(self, tile: Tile) -> Tile:
-        """Return the tile next from tile in collection."""
+    def focus_next(self, tile: Tile) -> Optional[Tile]:
+        """Return the tile next from tile in collection or None."""
         try:
             return self[self.index(tile) + 1]
         except IndexError:
-            raise IndexError
+            return None
 
     def focus_last(self) -> Tile:
         """Return the last tile in collection."""
         return self[-1]
 
-    def focus_previous(self, tile: Tile) -> Tile:
-        """Return the tile previous to tile in collection."""
+    def focus_previous(self, tile: Tile) -> Optional[Tile]:
+        """Return the tile previous to tile in collection or None."""
         i = self.index(tile)
         if i > 0:
             return self[i - 1]
-        return tile
+        return None
 
     def add(
         self, tile: Tile, offset_to_current: int = 0, tile_position: str = ""
@@ -189,7 +203,7 @@ class TileList:
         try:
             return self.tiles[i]
         except IndexError:
-            raise IndexError()
+            raise IndexError("Index error for tile lists!")
 
     def __setitem__(self, i: int, value: Tile) -> None:
         """Inner method."""

@@ -133,3 +133,9 @@ certs/*.csr
 
 # Ignore the log volume
 log/
+
+# Ignore history
+.history/
+
+# Ignore vscode
+.vscode/
