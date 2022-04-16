@@ -19,7 +19,9 @@ ui = UserInterface()
 term = Terminal()
 
 view = View(ui.term)
-monad = MonadTallLayout(width=term.width, height=term.height, x=0, y=0)
+monad = MonadTallLayout(
+    width=term.width, height=term.height, x=0, y=0, use_margins=True
+)
 chat = Tile(
     "*",
 )
@@ -28,6 +30,8 @@ contacts = Tile(
 )
 
 # Test on resize signal
+
+
 def on_resize(
     a1: Union[signal.Signals, FrameType],
     a2: Any,
@@ -35,6 +39,7 @@ def on_resize(
     """Test function for on_resize events."""
     monad.screen_rect_change(width=term.width, height=term.height, x=0, y=0)
     asyncio.run(monad.render())
+
 
 signal.signal(signal.SIGWINCH, on_resize)
 

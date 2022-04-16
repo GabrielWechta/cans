@@ -133,12 +133,12 @@ class MonadTallLayout:
     The percent of the screen-space the master pane should occupy
     at minimum.
     """
-    max_ratio = 0.75
+    max_ratio = 0.85
     """
     The percent of the screen-space the master pane should occupy
     at maximum.
     """
-    min_secondary_size = 3
+    min_secondary_size = 1
     """Minimum size in pixel for a secondary pane window """
     align = _right
     """Which side master plane will be placed
@@ -158,7 +158,14 @@ class MonadTallLayout:
     screen_rect_tuple = namedtuple("screen_rect_tuple", "width height x y")
     """Named tuple structure for screen rect"""
 
-    def __init__(self, width: int, height: int, x: int, y: int) -> None:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        x: int,
+        y: int,
+        use_margins: bool = False,
+    ) -> None:
         """Init the view."""
         self.absolute_sizes: List[int] = []
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
@@ -167,6 +174,9 @@ class MonadTallLayout:
         self.tiles = TileList()
         self.align = MonadTallLayout.align
         self.ratio = MonadTallLayout.ratio
+
+        self.use_margins = use_margins
+        self.min_secondary_size += int(use_margins)
 
     # 'Hack' for linter coz it has a problem :)
     def clone(self) -> "MonadTallLayout":
@@ -181,6 +191,7 @@ class MonadTallLayout:
         c.screen_rect = self.screen_rect
         c.ratio = self.ratio
         c.align = self.align
+        c.use_margins = self.use_margins
         return c
 
     def _get_relative_size_from_absolute(self, absolute_size: int) -> float:
@@ -292,6 +303,10 @@ class MonadTallLayout:
             self.absolute_sizes.append(
                 self._get_absolute_size_from_relative(rel_val) + pad
             )
+        # if any height is lesser than minimum, normalize heights
+        for val in self.absolute_sizes:
+            if val < self.min_secondary_size:
+                self.cmd_normalize()
 
     def cmd_reset(self, ratio: float = None, redraw: bool = True) -> None:
         """Reset Layout."""
@@ -735,7 +750,6 @@ class MonadTallLayout:
 
     def cmd_swap_right(self) -> None:
         """Swap current tile with closest tile to the right."""
-        # TODO: fix
         tile = self.tiles.current_tile
         if tile:
             x, y = tile.x, tile.y
@@ -746,7 +760,6 @@ class MonadTallLayout:
 
     def cmd_swap_main(self) -> None:
         """Swap current tile to main pane."""
-        # TODO: fix
         if self.align == self._left:
             self.cmd_swap_left()
         elif self.align == self._right:
@@ -754,7 +767,6 @@ class MonadTallLayout:
 
     def cmd_left(self) -> None:
         """Focus on the closest tile to the left of the current tile."""
-        # TODO: fix
         tile = self.tiles.current_tile
         if tile:
             x, y = tile.x, tile.y
@@ -765,7 +777,6 @@ class MonadTallLayout:
 
     def cmd_right(self) -> None:
         """Focus on the closest tile to the right of the current tile."""
-        # TODO: fix
         tile = self.tiles.current_tile
         if tile:
             x, y = tile.x, tile.y
@@ -829,16 +840,26 @@ class MonadTallLayout:
 
     async def render(self) -> None:
         """Render all tiles on screen."""
+        term = Terminal()
+        print(term.clear)
         if len(self.tiles) == 0:
             screen = self.screen_rect
-            term = Terminal()
             for y in range(0, (screen.height)):
                 with term.location((screen.x), (screen.y + y)):
                     out = (screen.width) * " "
                     print(out, end="")
             return
-        for tile in self.tiles:
+        for i, tile in enumerate(self.tiles):
             i1 = self.tiles.index(tile)
             i2 = self.tiles.current_index
             focused = i1 == i2
+            # Set margins if using them
+            # NOTE: bottom line of layout is always used as margin
+            if self.use_margins:
+                if i == 0:
+                    tile.margins = (
+                        "rd" if self.align == MonadTallLayout._right else "ld"
+                    )
+                else:
+                    tile.margins = "d"
             await tile.render(focused)
