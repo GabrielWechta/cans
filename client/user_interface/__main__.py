@@ -16,9 +16,6 @@ print("hello")
 
 ui = UserInterface()
 
-ui.say_hello()
-print(ui.term)
-
 term = Terminal()
 
 view = View(ui.term)
@@ -31,8 +28,6 @@ contacts = Tile(
 )
 
 # Test on resize signal
-
-
 def on_resize(
     a1: Union[signal.Signals, FrameType],
     a2: Any,
@@ -40,7 +35,6 @@ def on_resize(
     """Test function for on_resize events."""
     monad.screen_rect_change(width=term.width, height=term.height, x=0, y=0)
     asyncio.run(monad.render())
-
 
 signal.signal(signal.SIGWINCH, on_resize)
 
@@ -91,6 +85,7 @@ monad.add(chat)
 monad.add(contacts)
 monad.add(Tile("a"))
 monad.add(Tile("x"))
+asyncio.run(monad.render())
 
 while True:
     inp = input()
@@ -111,13 +106,5 @@ while True:
     asyncio.run(monad.render())
 
 
-info = ""
-for x in monad.tiles:
-    # x.print()
-    info += x.info()
-
-print(info)
-with (term.location(0, 0)):
-    term.inkey()
 # print(monad.screen_rect[1])
 # monad.layout_all()
