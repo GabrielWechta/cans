@@ -1,10 +1,11 @@
 """Contains tiling manager classes used by View."""
 import math
 import operator
-from blessed import Terminal
 from collections import namedtuple
 from functools import reduce
 from typing import List, Optional
+
+from blessed import Terminal
 
 from .tile_list import TileList
 from .tiles import Tile
@@ -144,7 +145,7 @@ class MonadTallLayout:
     "(one of `_left` or `_right`)"""
     change_ratio = 0.05
     """Resize ratio"""
-    change_size = 1
+    change_size = 2
     """Resize change in pixels"""
     new_tile_position = "after_current"
     """
@@ -159,11 +160,13 @@ class MonadTallLayout:
 
     def __init__(self, width: int, height: int, x: int, y: int) -> None:
         """Init the view."""
-        self.relative_sizes: List[float] = []
+        self.absolute_sizes: List[int] = []
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
             width=width, height=height, x=x, y=y
         )
         self.tiles = TileList()
+        self.align = MonadTallLayout.align
+        self.ratio = MonadTallLayout.ratio
 
     # 'Hack' for linter coz it has a problem :)
     def clone(self) -> "MonadTallLayout":
@@ -174,7 +177,7 @@ class MonadTallLayout:
             x=self.screen_rect.x,
             y=self.screen_rect.y,
         )
-        c.relative_sizes = []
+        c.absolute_sizes = []
         c.screen_rect = self.screen_rect
         c.ratio = self.ratio
         c.align = self.align
@@ -184,15 +187,22 @@ class MonadTallLayout:
         return absolute_size / self.screen_rect.height
 
     def _get_absolute_size_from_relative(self, relative_size: float) -> int:
-        return int(relative_size * self.screen_rect.height)
+        return round(relative_size * self.screen_rect.height)
 
     def screen_rect_change(
         self, width: int, height: int, x: int, y: int
     ) -> None:
         """Set the screen rect and redraw the screen."""
+        # Save relative sizes to preserve them
+        relative_sizes = [
+            self._get_relative_size_from_absolute(val)
+            for val in self.absolute_sizes
+        ]
+
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
             width=width, height=height, x=x, y=y
         )
+        self._relative_sizes_to_absolute(relative_sizes)
 
         self.layout_all()
 
@@ -217,11 +227,11 @@ class MonadTallLayout:
         try:
             self.tiles[0].height = self.screen_rect.height
             self.tiles[0].y = self.screen_rect.y
-        except:
+        except IndexError:
             return
 
-        # Edge case, normalize if there are no relative heights for sec. panes
-        if not self.relative_sizes:
+        # Edge case, normalize if there are no absolute heights for sec. panes
+        if not self.absolute_sizes:
             self.cmd_normalize(recalc=False)
 
         # Set secondary panes heights
@@ -246,11 +256,42 @@ class MonadTallLayout:
 
         # if secondary tiles exist
         if n > 0 and self.screen_rect is not None:
-            self.relative_sizes = [(1.0 / n)] * n
+            relative_sizes = [(1.0 / n)] * n
+            self._relative_sizes_to_absolute(relative_sizes)
 
         # reset main pane ratio
         if recalc:
             self.layout_all()
+
+    def _relative_sizes_to_absolute(self, relative_sizes: List[float]) -> None:
+        """Calculate absolute sizes from a list of relative sizes (sum 1)."""
+        n = len(self.tiles) - 1
+        # check if screen can be distributed in its entirety
+        calc_height = reduce(
+            operator.add,
+            [self._get_absolute_size_from_relative(a) for a in relative_sizes],
+        )
+        pads = [0] * n
+        i = 0
+
+        # if not then check if any of secondary panes is focused:
+        if abs(calc_height - self.screen_rect.height) > 0:
+            # if not then add/subtract 1 pixel to/from every
+            # secondary pane until its ok
+            while calc_height < self.screen_rect.height:
+                amt = int(
+                    math.copysign(1, self.screen_rect.height - calc_height)
+                )
+                pads[i] += amt
+                i = (i + 1) % n
+                calc_height += amt
+
+        # calculate absolute sizes
+        self.absolute_sizes = []
+        for rel_val, pad in zip(relative_sizes, pads):
+            self.absolute_sizes.append(
+                self._get_absolute_size_from_relative(rel_val) + pad
+            )
 
     def cmd_reset(self, ratio: float = None, redraw: bool = True) -> None:
         """Reset Layout."""
@@ -264,61 +305,44 @@ class MonadTallLayout:
         """Calculate x and width of all tiles."""
         ratio = self.ratio
 
-        # set the main pane position
-        self.tiles[0].x = self.screen_rect.x
-
         if len(self.tiles) > 1:
-            # set main pane width
-            self.tiles[0].width = math.ceil(ratio * self.screen_rect.width)
-            # set secondary pane width and position
-            for i in range(1, len(self.tiles)):
-                tile = self.tiles[i]
-                tile.width = math.floor((1.0 - ratio) * self.screen_rect.width)
-                tile.x = self.tiles[0].width + self.screen_rect.x
+            # right alignment
+            if self.align == MonadTallLayout._right:
+                self.tiles[0].x = self.screen_rect.x
+                # set main pane width
+                self.tiles[0].width = math.ceil(ratio * self.screen_rect.width)
+                # set secondary pane width and position
+                for i in range(1, len(self.tiles)):
+                    tile = self.tiles[i]
+                    tile.width = math.floor(
+                        (1.0 - ratio) * self.screen_rect.width
+                    )
+                    tile.x = self.tiles[0].width + self.screen_rect.x
+            # left alignment
+            else:
+                sec_width = math.floor((1.0 - ratio) * self.screen_rect.width)
+                self.tiles[0].x = sec_width + self.screen_rect.x
+                # set main pane width
+                self.tiles[0].width = math.ceil(ratio * self.screen_rect.width)
+                # set secondary pane width and position
+                for i in range(1, len(self.tiles)):
+                    tile = self.tiles[i]
+                    tile.width = sec_width
+                    tile.x = self.screen_rect.x
         else:
             # set main pane width - fullscreen
+            self.tiles[0].x = self.screen_rect.x
             self.tiles[0].width = self.screen_rect.width
 
     def _set_secondary_heights(self) -> None:
         """Calculate y and height of tiles."""
         if len(self.tiles) > 1:
-            n = len(self.relative_sizes)
-
-            # check if screen can be distributed in its entirety
-            calc_height = reduce(
-                operator.add,
-                [
-                    math.floor(a * self.screen_rect.height)
-                    for a in self.relative_sizes
-                ],
-            )
-            pads = [0] * n
-            i = 0
-
-            # if not then check if any of secondary panes is focused:
-            if calc_height < self.screen_rect.height:
-                # if self.tiles.current_index > 0:
-                # I think ti looks worse, we can check later
-                #    #if it is then add all remaining pixels to it
-                #    pads[self.tiles.current_index - 1] += \
-                #       self.screen_rect.height - calc_height
-                # else:
-                # if not then add 1 pixel to every secondary pane until its ok
-                while calc_height < self.screen_rect.height:
-                    pads[i] += 1
-                    i = (i + 1) % n
-                    calc_height += 1
-
+            n = len(self.tiles) - 1  # exclude main tile, 0
             # calculate absolute pixel height values and positions
             height = 0
             for i in range(0, n):
                 tile = self.tiles[i + 1]
-                tile.height = (
-                    math.floor(
-                        self.relative_sizes[i] * self.screen_rect.height
-                    )
-                    + pads[i]
-                )
+                tile.height = self.absolute_sizes[i]
                 tile.y = height + self.screen_rect.y
                 height += tile.height
 
@@ -340,21 +364,10 @@ class MonadTallLayout:
         # total height of maximized secondary
         maxed_size = self.screen_rect.height - collapsed_size
         # if maximized or nearly maximized
-        if (
-            abs(
-                self._get_absolute_size_from_relative(
-                    self.relative_sizes[nidx]
-                )
-                - maxed_size
-            )
-            < self.change_size
-        ):
+        if abs(self.absolute_sizes[nidx] - maxed_size) <= self.change_size:
             # minimize
             self._shrink_secondary(
-                self._get_absolute_size_from_relative(
-                    self.relative_sizes[nidx]
-                )
-                - self.min_secondary_size
+                self.absolute_sizes[nidx] - self.min_secondary_size
             )
         # otherwise maximize
         else:
@@ -364,8 +377,7 @@ class MonadTallLayout:
         """Return how many remaining pixels a tile can shrink."""
         return max(
             0,
-            self._get_absolute_size_from_relative(self.relative_sizes[i])
-            - self.min_secondary_size,
+            self.absolute_sizes[i] - self.min_secondary_size,
         )
 
     def shrink(self, i: int, amt: int) -> int:
@@ -378,14 +390,10 @@ class MonadTallLayout:
         # get max resizable amount
         margin = self.get_shrink_margin(i)
         if amt > margin:  # too much
-            self.relative_sizes[i] -= self._get_relative_size_from_absolute(
-                margin
-            )
+            self.absolute_sizes[i] -= margin
             return amt - margin
         else:
-            self.relative_sizes[i] -= self._get_relative_size_from_absolute(
-                amt
-            )
+            self.absolute_sizes[i] -= amt
             return 0
 
     def shrink_up(self, idx: int, amt: int) -> int:
@@ -418,7 +426,7 @@ class MonadTallLayout:
         Any amount that was unable to be applied to the tiles is returned.
         """
         # split shrink amount among number of tiles
-        per_amt = int(amt / idx)
+        per_amt = math.ceil(amt / idx)
         left = amt  # track unused shrink amount
         # for each tile before specified index
         for i in range(0, idx):
@@ -442,7 +450,7 @@ class MonadTallLayout:
         """
         left = amt  # track unused shrink amount
         # for each tile after specified index
-        for i in range(idx + 1, len(self.relative_sizes)):
+        for i in range(idx + 1, len(self.absolute_sizes)):
             # shrink by current total left-over amount
             left -= left - self.shrink(i, left)
         # return unused shrink amount
@@ -460,15 +468,15 @@ class MonadTallLayout:
         Any amount that was unable to be applied to the tiles is returned.
         """
         # split shrink amount among number of tiles
-        per_amt = int(amt / (len(self.relative_sizes) - 1 - idx))
+        per_amt = math.ceil(amt / (len(self.absolute_sizes) - 1 - idx))
         left = amt  # track unused shrink amount
         # for each tile after specified index
-        for i in range(idx + 1, len(self.relative_sizes)):
+        for i in range(idx + 1, len(self.absolute_sizes)):
             # shrink by equal amount and track left-over
             left -= per_amt - self.shrink(i, per_amt)
         # apply non-equal shrinkage secondary pass
         # in order to use up any left over shrink amounts
-        left = self.shrink_down(i, left)
+        left = self.shrink_down(idx, left)
         # return whatever could not be applied
         return left
 
@@ -484,7 +492,7 @@ class MonadTallLayout:
 
     def _grow_secondary(self, amt: int) -> None:
         """Will grow the focused tile in the secondary pane."""
-        half_change_size = int(amt / 2)
+        half_change_size = math.ceil(amt / 2)
         # track unshrinkable amounts
         left = amt
         # first secondary (top)
@@ -494,7 +502,7 @@ class MonadTallLayout:
         # last secondary (bottom)
         elif self.focused == len(self.tiles) - 1:
             # only shrink upwards
-            left -= amt - self.shrink_up(len(self.relative_sizes) - 1, amt)
+            left -= amt - self.shrink_up(len(self.absolute_sizes) - 1, amt)
         # middle secondary
         else:
             # get size index
@@ -503,21 +511,22 @@ class MonadTallLayout:
             left -= half_change_size - self.shrink_up_shared(
                 i, half_change_size
             )
-            left -= half_change_size - self.shrink_down_shared(
-                i, half_change_size
-            )
-            left -= half_change_size - self.shrink_up_shared(
-                i, half_change_size
-            )
-            left -= half_change_size - self.shrink_down_shared(
-                i, half_change_size
-            )
+            if left > 0:
+                left -= half_change_size - self.shrink_down_shared(
+                    i, half_change_size
+                )
+            if left > 0:
+                left -= half_change_size - self.shrink_up_shared(
+                    i, half_change_size
+                )
+            if left > 0:
+                left -= half_change_size - self.shrink_down_shared(
+                    i, half_change_size
+                )
         # calculate how much shrinkage took place
         diff = amt - left
         # grow tile by diff amount
-        self.relative_sizes[
-            self.focused - 1
-        ] += self._get_relative_size_from_absolute(diff)
+        self.absolute_sizes[self.focused - 1] += diff
 
     def cmd_maximize(self) -> None:
         """Grow the currently focused tile to the max size."""
@@ -567,9 +576,9 @@ class MonadTallLayout:
 
     def grow(self, idx: int, amt: int) -> None:
         """Grow secondary tile by specified amount."""
-        self.relative_sizes[idx] += self._get_relative_size_from_absolute(amt)
+        self.absolute_sizes[idx] += amt
 
-    def grow_up_shared(self, idx: int, amt: float) -> None:
+    def grow_up_shared(self, idx: int, amt: int) -> None:
         """
         Grow higher secondary tiles.
 
@@ -577,11 +586,21 @@ class MonadTallLayout:
         share of the provided amount.
         """
         # split grow amount among number of tiles
-        per_amt = int(amt / idx)
-        for i in range(0, idx):
-            self.grow(i, per_amt)
+        per_amt = math.ceil(amt / idx)
+        left = amt  # track unused grow amount
 
-    def grow_down_shared(self, idx: int, amt: float) -> None:
+        # for each tile after specified index
+        for i in range(0, idx):
+            # shrink by equal amount and track left-over
+            left -= per_amt
+            if left > 0:
+                self.grow(i, per_amt)
+            # if this change would've grown too much
+            else:
+                self.grow(i, left + per_amt)
+                break
+
+    def grow_down_shared(self, idx: int, amt: int) -> None:
         """
         Grow lower secondary tiles.
 
@@ -589,9 +608,19 @@ class MonadTallLayout:
         share of the provided amount.
         """
         # split grow amount among number of tiles
-        per_amt = int(amt / (len(self.relative_sizes) - 1 - idx))
-        for i in range(idx + 1, len(self.relative_sizes)):
-            self.grow(i, per_amt)
+        per_amt = math.ceil(amt / (len(self.absolute_sizes) - 1 - idx))
+        left = amt  # track unused grow amount
+
+        # for each tile after specified index
+        for i in range(idx + 1, len(self.absolute_sizes)):
+            # shrink by equal amount and track left-over
+            left -= per_amt
+            if left > 0:
+                self.grow(i, per_amt)
+            # if this change would've grown too much
+            else:
+                self.grow(i, left + per_amt)
+                break
 
     def _shrink_main(self, amt: float) -> None:
         """Will shrink the tile that currently in the main pane."""
@@ -619,7 +648,8 @@ class MonadTallLayout:
             change = tile.height - self.min_secondary_size
 
         # calculate half of that change
-        half_change = change / 2
+        half_change_1 = math.floor(change / 2)
+        half_change_2 = math.ceil(change / 2)
 
         # first secondary (top)
         if self.focused == 1:
@@ -628,17 +658,15 @@ class MonadTallLayout:
         # last secondary (bottom)
         elif self.focused == len(self.tiles) - 1:
             # only grow upwards
-            self.grow_up_shared(len(self.relative_sizes) - 1, change)
+            self.grow_up_shared(len(self.absolute_sizes) - 1, change)
         # middle secondary
         else:
             i = self.focused - 1
             # grow up and down
-            self.grow_up_shared(i, half_change)
-            self.grow_down_shared(i, half_change)
+            self.grow_up_shared(i, half_change_1)
+            self.grow_down_shared(i, half_change_2)
         # shrink tiles by total change
-        self.relative_sizes[
-            self.focused - 1
-        ] -= self._get_relative_size_from_absolute(change)
+        self.absolute_sizes[self.focused - 1] -= change
 
     def cmd_shrink(self) -> None:
         """
@@ -806,7 +834,7 @@ class MonadTallLayout:
             term = Terminal()
             for y in range(0, (screen.height)):
                 with term.location((screen.x), (screen.y + y)):
-                    out = (screen.width) * ' '
+                    out = (screen.width) * " "
                     print(out, end="")
             return
         for tile in self.tiles:

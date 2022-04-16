@@ -1,9 +1,11 @@
 """For CLI usage and debugging."""
 import asyncio
 import signal
+from random import choice
+from types import FrameType
+from typing import Any, Callable, Mapping, Union
 
 from blessed import Terminal
-from random import choice
 
 from ..user_interface import UserInterface
 from .tiles import Tile
@@ -29,48 +31,58 @@ contacts = Tile(
 )
 
 # Test on resize signal
-def on_resize(*args) -> None:
+
+
+def on_resize(
+    a1: Union[signal.Signals, FrameType],
+    a2: Any,
+) -> None:
+    """Test function for on_resize events."""
     monad.screen_rect_change(width=term.width, height=term.height, x=0, y=0)
+    asyncio.run(monad.render())
+
+
 signal.signal(signal.SIGWINCH, on_resize)
 
-signs= "qwertyuiopasdfghjklzxcvbnm1234567890!@#$%^&*()"
-
-# Test mapping of keys to commands
-cmds_layout = {
+signs = "qwertyuiopasdfghjklzxcvbnm1234567890!@#$%^&*()"
+cmds_layout: Mapping[Any, Callable[..., None]] = {
     term.KEY_LEFT:  monad.cmd_left,
     term.KEY_RIGHT: monad.cmd_right,
     term.KEY_DOWN:  monad.cmd_down,
     term.KEY_UP:    monad.cmd_up,
 
-    term.KEY_SLEFT:  monad.cmd_swap_left,
-    term.KEY_SRIGHT: monad.cmd_swap_right,
-    term.KEY_SDOWN:  monad.cmd_shuffle_down,
-    term.KEY_SUP:    monad.cmd_shuffle_up,
+    term.KEY_SLEFT:     monad.cmd_swap_left,
+    term.KEY_SRIGHT:    monad.cmd_swap_right,
+    term.KEY_SDOWN:     monad.cmd_shuffle_down,
+    term.KEY_SUP:       monad.cmd_shuffle_up,
 
-    ' ':            monad.cmd_flip,
-    'q':            monad.cmd_grow,
-    'w':            monad.cmd_shrink,
-    'e':            monad.cmd_normalize,
-    'r':            monad.cmd_maximize,
-
+    ' ': monad.cmd_flip,
+    'q': monad.cmd_grow,
+    'w': monad.cmd_shrink,
+    'e': monad.cmd_normalize,
+    'r': monad.cmd_maximize,
 
     # ctrl+a
-    chr(1):         monad.add,
+    chr(1):     monad.add,
     # ctrl+d
-    chr(4):         monad.remove,
-}
+    chr(4):     monad.remove,
+    # ctrl+r
+    chr(17):    monad.cmd_reset,
+}  # fmt: skip
 
-# Prototype for input function
-def input():
-    with term.cbreak():
-        val = ''
-        val = term.inkey()
-        #print(val.name)
-        if val.is_sequence:
-            out = (val.code)
-        else:
-            out = (val)
+
+def input() -> str:
+    """Prototype for input function."""
+    with term.location():
+        with term.cbreak():
+            val = term.inkey()
+            # print(val.name)
+            if val.is_sequence:
+                out = val.code
+            else:
+                out = val
     return out
+
 
 monad.add(chat)
 monad.add(contacts)
@@ -89,7 +101,7 @@ while True:
             target = monad.focused
             try:
                 cmd(monad.tiles[target])
-            except:
+            except IndexError:
                 pass
         else:
             cmd()
