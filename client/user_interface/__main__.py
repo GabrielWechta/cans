@@ -46,16 +46,19 @@ signal.signal(signal.SIGWINCH, on_resize)
 
 signs = "qwertyuiopasdfghjklzxcvbnm1234567890!@#$%^&*()"
 cmds_layout: Mapping[Any, Callable[..., None]] = {
+    # arrow keys
     term.KEY_LEFT:  monad.cmd_left,
     term.KEY_RIGHT: monad.cmd_right,
     term.KEY_DOWN:  monad.cmd_down,
     term.KEY_UP:    monad.cmd_up,
 
+    # arrow keys with shift
     term.KEY_SLEFT:     monad.cmd_swap_left,
     term.KEY_SRIGHT:    monad.cmd_swap_right,
     term.KEY_SDOWN:     monad.cmd_shuffle_down,
     term.KEY_SUP:       monad.cmd_shuffle_up,
 
+    # normal letters
     ' ': monad.cmd_flip,
     'q': monad.cmd_grow,
     'w': monad.cmd_shrink,
