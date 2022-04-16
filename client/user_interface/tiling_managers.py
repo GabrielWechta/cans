@@ -1,6 +1,9 @@
 """Contains tiling manager classes used by View."""
 import math
+import operator
+from blessed import Terminal
 from collections import namedtuple
+from functools import reduce
 from typing import List, Optional
 
 from .tile_list import TileList
@@ -134,7 +137,7 @@ class MonadTallLayout:
     The percent of the screen-space the master pane should occupy
     at maximum.
     """
-    min_secondary_size = 10
+    min_secondary_size = 3
     """Minimum size in pixel for a secondary pane window """
     align = _right
     """Which side master plane will be placed
@@ -160,18 +163,16 @@ class MonadTallLayout:
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
             width=width, height=height, x=x, y=y
         )
-
-        print(self.screen_rect)
         self.tiles = TileList()
 
     # 'Hack' for linter coz it has a problem :)
     def clone(self) -> "MonadTallLayout":
         """Clone layout for other Views."""
         c = MonadTallLayout(
-            width=self.screen_rect[0],
-            height=self.screen_rect[1],
-            x=self.screen_rect[2],
-            y=self.screen_rect[3],
+            width=self.screen_rect.width,
+            height=self.screen_rect.height,
+            x=self.screen_rect.x,
+            y=self.screen_rect.y,
         )
         c.relative_sizes = []
         c.screen_rect = self.screen_rect
@@ -203,7 +204,6 @@ class MonadTallLayout:
     def add(self, tile: Tile) -> None:
         """Add tile to layout."""
         self.tiles.add(tile, tile_position=MonadTallLayout.new_tile_position)
-
         self.cmd_normalize()
 
     def remove(self, tile: Tile) -> None:
@@ -214,8 +214,11 @@ class MonadTallLayout:
     def layout_all(self) -> None:
         """Calculate the entire layout."""
         # Set main pane height
-        self.tiles[0].height = self.screen_rect[1]
-        self.tiles[0].y = self.screen_rect[3]
+        try:
+            self.tiles[0].height = self.screen_rect.height
+            self.tiles[0].y = self.screen_rect.y
+        except:
+            return
 
         # Edge case, normalize if there are no relative heights for sec. panes
         if not self.relative_sizes:
@@ -262,44 +265,61 @@ class MonadTallLayout:
         ratio = self.ratio
 
         # set the main pane position
-        self.tiles[0].x = self.screen_rect[2]
+        self.tiles[0].x = self.screen_rect.x
 
         if len(self.tiles) > 1:
             # set main pane width
-            self.tiles[0].width = math.ceil(ratio * self.screen_rect[0])
+            self.tiles[0].width = math.ceil(ratio * self.screen_rect.width)
             # set secondary pane width and position
             for i in range(1, len(self.tiles)):
                 tile = self.tiles[i]
-                tile.width = math.floor((1.0 - ratio) * self.screen_rect[0])
-                tile.x = self.tiles[0].width + self.screen_rect[2]
+                tile.width = math.floor((1.0 - ratio) * self.screen_rect.width)
+                tile.x = self.tiles[0].width + self.screen_rect.x
         else:
             # set main pane width - fullscreen
-            self.tiles[0].width = self.screen_rect[0]
+            self.tiles[0].width = self.screen_rect.width
 
     def _set_secondary_heights(self) -> None:
         """Calculate y and height of tiles."""
         if len(self.tiles) > 1:
-            n = len(self.tiles) - 1
+            n = len(self.relative_sizes)
 
-            # check if screen can be distributed evenly
-            calc_height = math.floor((1.0 / n) * self.screen_rect[1]) * n
+            # check if screen can be distributed in its entirety
+            calc_height = reduce(
+                operator.add,
+                [
+                    math.floor(a * self.screen_rect.height)
+                    for a in self.relative_sizes
+                ],
+            )
             pads = [0] * n
             i = 0
-            while calc_height < self.screen_rect[1]:
+
+            # if not then check if any of secondary panes is focused:
+            if calc_height < self.screen_rect.height:
+                # if self.tiles.current_index > 0:
+                # I think ti looks worse, we can check later
+                #    #if it is then add all remaining pixels to it
+                #    pads[self.tiles.current_index - 1] += \
+                #       self.screen_rect.height - calc_height
+                # else:
                 # if not then add 1 pixel to every secondary pane until its ok
-                pads[i] += 1
-                i = (i + 1) % n
-                calc_height += 1
+                while calc_height < self.screen_rect.height:
+                    pads[i] += 1
+                    i = (i + 1) % n
+                    calc_height += 1
 
             # calculate absolute pixel height values and positions
             height = 0
             for i in range(0, n):
                 tile = self.tiles[i + 1]
                 tile.height = (
-                    math.floor(self.relative_sizes[i] * self.screen_rect[1])
+                    math.floor(
+                        self.relative_sizes[i] * self.screen_rect.height
+                    )
                     + pads[i]
                 )
-                tile.y = height + self.screen_rect[3]
+                tile.y = height + self.screen_rect.y
                 height += tile.height
 
     def _maximize_main(self) -> None:
@@ -318,7 +338,7 @@ class MonadTallLayout:
         collapsed_size = self.min_secondary_size * n
         nidx = self.focused - 1  # focused size index
         # total height of maximized secondary
-        maxed_size = self.screen_rect[1] - collapsed_size
+        maxed_size = self.screen_rect.height - collapsed_size
         # if maximized or nearly maximized
         if (
             abs(
@@ -711,10 +731,8 @@ class MonadTallLayout:
         if tile:
             x, y = tile.x, tile.y
             candidates = [c for c in self.tiles if (c.x < x)]
-            print(candidates)
             target = self._get_closest(x=x, y=y, tiles=candidates)
             if target:
-                print(target.info())
                 self.focus(target)
 
     def cmd_right(self) -> None:
@@ -724,10 +742,8 @@ class MonadTallLayout:
         if tile:
             x, y = tile.x, tile.y
             candidates = [c for c in self.tiles if (c.x > x)]
-            print(candidates)
             target = self._get_closest(x=x, y=y, tiles=candidates)
             if target:
-                print(target.info())
                 self.focus(target)
 
     def focus(self, tile: Tile) -> None:
@@ -785,8 +801,16 @@ class MonadTallLayout:
 
     async def render(self) -> None:
         """Render all tiles on screen."""
+        if len(self.tiles) == 0:
+            screen = self.screen_rect
+            term = Terminal()
+            for y in range(0, (screen.height)):
+                with term.location((screen.x), (screen.y + y)):
+                    out = (screen.width) * ' '
+                    print(out, end="")
+            return
         for tile in self.tiles:
             i1 = self.tiles.index(tile)
             i2 = self.tiles.current_index
-            focused = (i1 == i2)
+            focused = i1 == i2
             await tile.render(focused)
