@@ -1,6 +1,7 @@
 """TileList class."""
+from builtins import slice
 from collections.abc import Iterator
-from typing import List, Optional
+from typing import List, Optional, Union, overload
 
 from .tiles import Tile
 
@@ -198,7 +199,17 @@ class TileList:
         """Inner method."""
         return len(self.tiles)
 
+    @overload
     def __getitem__(self, i: int) -> Tile:
+        """Inner method."""
+        ...
+
+    @overload
+    def __getitem__(self, i: slice) -> List[Tile]:
+        """Inner method."""
+        ...
+
+    def __getitem__(self, i: Union[int, slice]) -> Union[Tile, List[Tile]]:
         """Inner method."""
         try:
             return self.tiles[i]

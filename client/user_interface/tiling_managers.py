@@ -838,7 +838,7 @@ class MonadTallLayout:
         tile = self.focus_next(self.tiles.current_tile) or self.focus_first()
         self.focus(tile)
 
-    async def render(self) -> None:
+    async def render_all(self) -> None:
         """Render all tiles on screen."""
         term = Terminal()
         print(term.clear)
@@ -849,17 +849,49 @@ class MonadTallLayout:
                     out = (screen.width) * " "
                     print(out, end="")
             return
-        for i, tile in enumerate(self.tiles):
+        await self.render_main()
+        await self.render_secondary()
+
+    async def render_secondary(self) -> None:
+        """Render secondary tiles on screen."""
+        for i, tile in enumerate(self.tiles[1:]):
+            i2 = self.tiles.current_index
+            tile.focused = i == i2
+            # Set margins if using them
+            if self.use_margins:
+                self.set_margins(tile)
+            else:
+                tile.margins = ""
+
+            await tile.render()
+
+    async def render_main(self) -> None:
+        """Render main tile on screen."""
+        tile = self.tiles[0]
+        tile.focused = self.tiles.current_index == 0
+
+        if self.use_margins:
+            self.set_margins(tile)
+        else:
+            tile.margins = ""
+
+        await tile.render()
+
+    async def render_focus(self) -> None:
+        """Render only the focus indicator on screen."""
+        term = Terminal()
+        for tile in self.tiles:
             i1 = self.tiles.index(tile)
             i2 = self.tiles.current_index
-            focused = i1 == i2
-            # Set margins if using them
-            # NOTE: bottom line of layout is always used as margin
-            if self.use_margins:
-                if i == 0:
-                    tile.margins = (
-                        "rd" if self.align == MonadTallLayout._right else "ld"
-                    )
-                else:
-                    tile.margins = "d"
-            await tile.render(focused)
+            tile.focused = i1 == i2
+            await tile.render_focus(term)
+
+    def set_margins(self, tile: Tile) -> None:
+        """Set margins of a tile."""
+        i = self.tiles.index(tile)
+        if i == 0:
+            margins = "rd" if self.align == MonadTallLayout._right else "ld"
+        else:
+            margins = "d"
+
+        tile.margins = margins

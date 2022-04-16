@@ -38,7 +38,7 @@ def on_resize(
 ) -> None:
     """Test function for on_resize events."""
     monad.screen_rect_change(width=term.width, height=term.height, x=0, y=0)
-    asyncio.run(monad.render())
+    asyncio.run(monad.render_all())
 
 
 signal.signal(signal.SIGWINCH, on_resize)
@@ -90,7 +90,7 @@ monad.add(chat)
 monad.add(contacts)
 monad.add(Tile("a"))
 monad.add(Tile("x"))
-asyncio.run(monad.render())
+asyncio.run(monad.render_all())
 
 while True:
     inp = input()
@@ -98,6 +98,12 @@ while True:
     if inp in cmds_layout:
         cmd = cmds_layout[inp]
     if cmd:
+        focus_cmds = [
+            monad.cmd_down,
+            monad.cmd_up,
+            monad.cmd_left,
+            monad.cmd_right,
+        ]
         if cmd == monad.add:
             cmd(Tile(choice(signs)))
         elif cmd == monad.remove:
@@ -108,7 +114,10 @@ while True:
                 pass
         else:
             cmd()
-    asyncio.run(monad.render())
+        if cmd in focus_cmds:
+            asyncio.run(monad.render_focus())
+        else:
+            asyncio.run(monad.render_all())
 
 
 # print(monad.screen_rect[1])

@@ -30,9 +30,19 @@ class Tile:
 
         self.width = width
         self.height = height
-        self.margins = ""
+        self._margins = ""
+        self.focused = False
 
-    async def render(self, focused: bool = False) -> None:
+    @property
+    def margins(self) -> str:
+        """Define margins of tile."""
+        return self._margins
+
+    @margins.setter
+    def margins(self, margins: str) -> None:
+        self._margins = margins
+
+    async def render(self) -> None:
         """Render the Tile."""
         t = Terminal()
         sign = self.name[0]
@@ -48,34 +58,42 @@ class Tile:
         for y in range(0, (height)):
             with t.location((self.x), (self.y + int("u" in self.margins) + y)):
                 out = (width) * str(sign)
-                if not focused:
+                if not self.focused:
                     print(out, end="")
                 else:
-                    print(t.red(out), end="")
+                    print(out, end="")
+                    # print(t.red(out), end="")
 
         # print margins
         await self.render_margins(t)
 
     async def render_margins(self, t: Terminal) -> None:
         """Render margins of a tile."""
-        if "l" in self.margins:
+        attr = "red" if self.focused else "normal"
+
+        color = getattr(t, attr)
+        if "l" in self._margins:
             for y in range(0, (self.height)):
                 with t.location((self.x), (self.y + y)):
                     out = self.margin["l"]
-                    print(out, end="")
-        if "r" in self.margins:
+                    print(color + out, end="")
+        if "r" in self._margins:
             for y in range(0, (self.height)):
                 with t.location((self.x + self.width - 1), (self.y + y)):
                     out = self.margin["r"]
-                    print(out, end="")
-        if "d" in self.margins:
+                    print(color + (out), end="")
+        if "d" in self._margins:
             with t.location((self.x), (self.y + self.height - 1)):
                 out = (self.width) * self.margin["d"]
-                print(out, end="")
-        if "u" in self.margins:
+                print(color + (out), end="")
+        if "u" in self._margins:
             with t.location((self.x), (self.y)):
                 out = (self.width) * self.margin["u"]
-                print(out, end="")
+                print(color + (out), end="")
+
+    async def render_focus(self, t: Terminal) -> None:
+        """Render only the focus indicator."""
+        await self.render_margins(t)
 
     def info(self) -> str:
         """Return Tile info."""
