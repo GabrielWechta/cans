@@ -23,10 +23,10 @@ monad = MonadTallLayout(
     width=term.width, height=term.height, x=0, y=0, use_margins=True
 )
 chat = Tile(
-    "*",
+    "* chat",
 )
 contacts = Tile(
-    "d",
+    "d contacts test test test",
 )
 
 # Test on resize signal
@@ -75,7 +75,7 @@ cmds_layout: Mapping[Any, Callable[..., None]] = {
 
 def input() -> str:
     """Prototype for input function."""
-    with term.location():
+    with term.location(0, term.height):
         with term.cbreak():
             val = term.inkey()
             # print(val.name)
@@ -88,8 +88,8 @@ def input() -> str:
 
 monad.add(chat)
 monad.add(contacts)
-monad.add(Tile("a"))
-monad.add(Tile("x"))
+monad.add(Tile("a name"))
+monad.add(Tile("x names"))
 asyncio.run(monad.render_all())
 
 while True:
@@ -105,7 +105,7 @@ while True:
             monad.cmd_right,
         ]
         if cmd == monad.add:
-            cmd(Tile(choice(signs)))
+            cmd(Tile(choice(signs) + " name"))
         elif cmd == monad.remove:
             target = monad.focused
             try:
