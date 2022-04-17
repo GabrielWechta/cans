@@ -301,7 +301,7 @@ class MonadTallLayout:
                     math.copysign(1, self.screen_rect.height - calc_height)
                 )
                 pads[i] += amt
-                i = (i + 1) % n
+                i = (i + 1) % (n)
                 calc_height += amt
 
         # calculate absolute sizes
@@ -748,7 +748,6 @@ class MonadTallLayout:
 
     def cmd_swap_left(self) -> None:
         """Swap current tile with closest tile to the left."""
-        # TODO: fix
         tile = self.tiles.current_tile
         if tile:
             x, y = tile.x, tile.y
@@ -850,7 +849,6 @@ class MonadTallLayout:
     async def render_all(self) -> None:
         """Render all tiles on screen."""
         term = Terminal()
-        print(term.clear)
         if len(self.tiles) == 0:
             screen = self.screen_rect
             for y in range(0, (screen.height)):
@@ -902,6 +900,6 @@ class MonadTallLayout:
         if i == 0:
             margins = "rd" if self.align == MonadTallLayout._right else "ld"
         else:
-            margins = "d"
+            margins = "ld" if self.align == MonadTallLayout._right else "rd"
 
         tile.margins = margins

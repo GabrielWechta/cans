@@ -8,7 +8,7 @@ from typing import Any, Callable, Mapping, Union
 from blessed import Terminal
 
 from ..user_interface import UserInterface
-from .tiles import Tile
+from .tiles import Tile, InputTile, ChatTile, HeaderTile
 from .tiling_managers import MonadTallLayout
 from .view import View
 
@@ -19,9 +19,13 @@ ui = UserInterface()
 term = Terminal()
 
 view = View(ui.term)
+
+header = HeaderTile(name = "Title bar", title = term.red_underline("cans") + " secure messenger", width = term.width, height = 2, x = 0, y = 0, margins = "d")
 monad = MonadTallLayout(
-    width=term.width, height=term.height, x=0, y=0, use_margins=True
+    width=term.width, height=term.height - 2 - 1, x=0, y=header.height, use_margins=True
 )
+footer = InputTile(name = "Input", width = term.width, height = 1, x = 0, y = monad.screen_rect.height + monad.screen_rect.y, margins = "")
+
 chat = Tile(
     "* chat",
 )
@@ -32,16 +36,16 @@ contacts = Tile(
 # Test on resize signal
 
 
-def on_resize(
-    a1: Union[signal.Signals, FrameType],
-    a2: Any,
+async def on_resize(
 ) -> None:
     """Test function for on_resize events."""
-    monad.screen_rect_change(width=term.width, height=term.height, x=0, y=0)
-    asyncio.run(monad.render_all())
-
-
-signal.signal(signal.SIGWINCH, on_resize)
+    monad.screen_rect_change(width=term.width, height=term.height - 2 - 1, x=0, y=header.height)
+    header.width = term.width
+    footer.y = monad.screen_rect.height + monad.screen_rect.y
+    footer.width = term.width
+    await (monad.render_all())
+    await (footer.render())
+    await (header.render())
 
 signs = "qwertyuiopasdfghjklzxcvbnm1234567890!@#$%^&*()"
 cmds_layout: Mapping[Any, Callable[..., None]] = {
@@ -85,15 +89,24 @@ def input() -> str:
                 out = val
     return out
 
-
 monad.add(chat)
 monad.add(contacts)
 monad.add(Tile("a name"))
 monad.add(Tile("x names"))
 asyncio.run(monad.render_all())
 
+asyncio.run(header.render())
+asyncio.run(footer.render())
+
+# signal handling it kinda works
+signal.signal(signal.SIGWINCH, lambda x,y: asyncio.create_task(on_resize()))
+
+footer.mode = ""
 while True:
-    inp = input()
+    asyncio.run(footer.input(term))
+
+    inp = asyncio.run(footer.input_queue.get())[1]
+    
     cmd = None
     if inp in cmds_layout:
         cmd = cmds_layout[inp]
@@ -104,6 +117,9 @@ while True:
             monad.cmd_left,
             monad.cmd_right,
         ]
+        if cmd == chr(3):
+            break
+                
         if cmd == monad.add:
             cmd(Tile(choice(signs) + " name"))
         elif cmd == monad.remove:

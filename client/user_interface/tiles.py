@@ -1,8 +1,10 @@
-"""Tile class for emulating an independent I/O widget of specified size."""
+"""Tile classes for emulating independent I/O widgets of specified size."""
 
 from blessed import Terminal
 from ..models import MessageModel
+from asyncio import Queue
 from typing import List
+import math
 
 class Tile:
     """Tile class for emulating an independent I/O widget of specified size."""
@@ -30,7 +32,7 @@ class Tile:
         self.x = x
         self.y = y
 
-        self._margins = ""
+        self._margins = margins
         self._height = 0
         self._width = 0
         self.width = width
@@ -79,11 +81,12 @@ class Tile:
         self.real_width = width
         self.real_height = height
 
-    def truncate(self, text: str, color: str = "") -> str:
+    def truncate(self, text: str, t: Terminal) -> str:
+        """Truncate text to fit into the rendering box."""
         out = text
         if len(text) > self.real_width:
-            out = text[:self.real_width - 1]
-            out += color +'>'
+            out = t.truncate(text, self.real_width - 1)
+            out += t.on_white('>')
         return out
 
     async def render(self) -> None:
@@ -97,7 +100,7 @@ class Tile:
 
         # for now just fill the Tile with some symbol
         for y in range(0 + 1, (self.real_height + 1)): # +1 for title
-            with t.location((self.x), (self.y + int("u" in self.margins) + y)):
+            with t.hidden_cursor(), t.location((self.x + int("l" in self.margins)), (self.y + int("u" in self.margins) + y)):
                 out = (self.real_width) * str(sign)
                 if not self.focused:
                     print(out, end="")
@@ -110,11 +113,13 @@ class Tile:
 
     async def render_titlebar(self, t:Terminal) -> None:
         """Render title bar of a Tile"""
-        with t.location(self.x, self.y):
+        with t.hidden_cursor(), t.location(self.x + int("l" in self.margins), self.y):
             if self.title != "":
-                print(self.truncate(self.title, t.on_white), end="")
+                out = self.title + " " * (self.width - len(self.title) - 1)
+                print(self.truncate(out, t), end="")
             else:
-                print(self.truncate(self.name, t.on_white), end="")
+                out = self.name + " " * (self.width - len(self.name) - 1)
+                print(self.truncate(out, t), end="")
 
     async def render_margins(self, t: Terminal) -> None:
         """Render margins of a tile."""
@@ -123,20 +128,20 @@ class Tile:
         color = getattr(t, attr)
         if "l" in self._margins:
             for y in range(0, (self._height)):
-                with t.location((self.x), (self.y + y)):
+                with t.hidden_cursor(),t.location((self.x), (self.y + y)):
                     out = self.margin["l"]
                     print(color + out, end="")
         if "r" in self._margins:
             for y in range(0, (self._height)):
-                with t.location((self.x + self._width - 1), (self.y + y)):
+                with t.hidden_cursor(),t.location((self.x + self._width - 1), (self.y + y)):
                     out = self.margin["r"]
                     print(color + (out), end="")
         if "d" in self._margins:
-            with t.location((self.x), (self.y + self._height - 1)):
+            with t.hidden_cursor(),t.location((self.x), (self.y + self._height - 1)):
                 out = (self._width) * self.margin["d"]
                 print(color + (out), end="")
         if "u" in self._margins:
-            with t.location((self.x), (self.y)):
+            with t.hidden_cursor(),t.location((self.x), (self.y)):
                 out = (self._width) * self.margin["u"]
                 print(color + (out), end="")
 
@@ -156,21 +161,134 @@ height:         {self.height}
 ----------------
         """
 
+class HeaderTile(Tile):
+    """Header Tile"""
+
+    async def render(self) -> None:
+        """Render the Tile."""
+        t = Terminal()
+        await self.render_margins(t)
+        await self.render_titlebar(t)
+        
+
+class InputTile(Tile):
+    """Input Tile"""
+    def __init__(self, prompt = "> ", *args, **kwargs) -> None:
+        """Init input Tile"""
+        self.prompt = prompt
+        Tile.__init__(self, *args, **kwargs)
+        self.input_queue = Queue()
+        self.prompt_position = math.floor(self.real_height / 2)
+        
+        self.mode = ""
+
+    def real_size(self) -> None:
+        """Calculate real size, excluding margins"""
+        width = (
+            self._width - int("l" in self.margins) - int("r" in self.margins)
+        ) - len(self.prompt) 
+        height = (
+            self._height - int("u" in self.margins) - int("d" in self.margins)
+        ) - 1 #for titlebar
+        
+        self.real_width = width
+        self.real_height = height
+        
+
+    async def input(self, term: Terminal) -> None:
+        """Input function, REALLY BAD TODO: think about better implementation."""
+        inp = ""
+        
+        while True:
+            #set cursor position
+            with term.raw(), term.location(len(self.prompt) + self.x + int("l" in self.margins) + len(inp), self.y + self.prompt_position):
+                # paste handling, use the first character to check
+                # command type and add rest as additional input
+                val = term.inkey()
+                next = term.inkey(timeout=0.001)
+                add_input = ""
+                while next and self.input_filter(next):
+                    add_input += next
+                    next = term.inkey(timeout=0.001)
+            
+                if val == chr(3):
+                    raise KeyboardInterrupt()
+                # if normal mode
+                if self.mode == "":
+                    if val.code == term.KEY_ESCAPE:
+                        self.mode = "layout"
+                        self.clear_input(term)
+                    else:
+                        # if enter was pressed, return input
+                        if val.code == term.KEY_ENTER:
+                            await self.input_queue.put((self.mode, inp))
+                            self.clear_input(term)
+                            return
+                        if val.code == term.KEY_BACKSPACE or val.code == term.KEY_DELETE:
+                            self.clear_input(term)
+                            inp = inp[:-1]
+                        elif self.input_filter(val):
+                            inp += val + add_input
+                        self.display_prompt(inp, term)
+                # if layout mode
+                elif self.mode == "layout":
+                    if val.code == term.KEY_ENTER:
+                        self.mode = ""
+                        self.clear_input(term)
+                    else:
+                        if self.input_filter(val) or not val.code:
+                            await self.input_queue.put((self.mode, val))
+                        else:
+                            await self.input_queue.put((self.mode, val.code)) 
+                        return
+
+    def clear_input(self, t: Terminal) -> None:
+        text = (self.real_width) * " "
+        self.display_prompt(text, t)
+
+    def display_prompt(self, text: str, t: Terminal) -> None:
+        x_pos = len(self.prompt) + self.x + int("l" in self.margins)
+        y_pos = self.y + self.prompt_position
+        with t.location(x_pos, y_pos):
+            print(self.truncate_input(text, t), end="")
+
+    def truncate_input(self,text: str, t: Terminal) -> None:
+        """Truncate text to fit into the input box."""
+        out = text
+        if len(text) > self.real_width:
+            out = t.on_white('<') + ''
+            out += text[len(text) - (self.real_width) + 1:]
+        return out        
+
+    async def render(self) -> None:
+        """Render the Tile."""
+        t = Terminal()
+        with t.location(self.x, self.y), t.hidden_cursor():
+            print(self.prompt, end="")
+        print(t.move_xy(len(self.prompt) + self.x + int("l" in self.margins), self.y + self.prompt_position), end="")
+        
+
+    def input_filter(self, keystroke) -> str:
+        """
+        For given keystroke, return whether it should be allowed as string input.
+
+        This somewhat requires that the interface use special application keys to perform functions, as
+        alphanumeric input intended for persisting could otherwise be interpreted as a command sequence.
+        """
+        if keystroke.is_sequence:
+            # Namely, deny multi-byte sequences (such as '\x1b[A'),
+            return False
+        if ord(keystroke) < ord(u' '):
+            # or control characters (such as ^L),
+            return False
+        return True
+
 class ChatTile(Tile):
     """Chat tile."""
 
-    def __init__(
-        self,
-        name: str,
-        width: int = 0,
-        height: int = 0,
-        x: int = 0,
-        y: int = 0,
-        margins: str = "",
-    ) -> None:
-        """Insantiate a Chat Tile."""
-        Tile.__init__(self, name=name, width=width, height=height, x=x, y=y, margins=margins)
-        self._buffer: List[MessageModel] = []
+    def __init__(self,*args, **kwargs) -> None:
+        """Init chat Tile"""
+        Tile.__init__(self, *args, **kwargs)
         
 
     @property
