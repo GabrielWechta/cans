@@ -13,10 +13,10 @@ class UserModel:
 
 @dataclass
 class MessageModel:
-    from_user:  UserModel
-    to_user:    UserModel
-    date:       datetime
+    date:       datetime 
     body:       str
-    embeds:     List[Any]
+    from_user:  UserModel = None
+    to_user:    UserModel = None
+    #embeds:     List[Any] = []
 
     

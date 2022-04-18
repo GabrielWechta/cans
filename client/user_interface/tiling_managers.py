@@ -480,6 +480,10 @@ class MonadTallLayout:
         # return unused shrink amount
         return left
 
+    @property
+    def current_tile(self):
+        return self.tiles.current_tile
+
     def shrink_down_shared(self, idx: int, amt: int) -> int:
         """
         Shrink secondary tiles.

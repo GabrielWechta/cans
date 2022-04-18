@@ -1,9 +1,12 @@
 """Tile classes for emulating independent I/O widgets of specified size."""
 
 from blessed import Terminal
-from ..models import MessageModel
-from asyncio import Queue
+from ..models import MessageModel, UserModel
+from datetime import datetime
+from queue import Queue
 from typing import List
+import threading
+import os
 import math
 
 class Tile:
@@ -40,6 +43,7 @@ class Tile:
         self.focused = False
         self.title = title
         self.real_size()
+        self.body = ""
 
     @property
     def margins(self) -> str:
@@ -68,6 +72,11 @@ class Tile:
     def height(self, height: int) -> None:
         self._height = height
         self.real_size()
+
+    async def consume_input(self, inp: str) -> None:
+        """Consume some input in some way."""
+        self.body = inp
+        await self.render()
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins"""
@@ -101,13 +110,14 @@ class Tile:
         # for now just fill the Tile with some symbol
         for y in range(0 + 1, (self.real_height + 1)): # +1 for title
             with t.hidden_cursor(), t.location((self.x + int("l" in self.margins)), (self.y + int("u" in self.margins) + y)):
-                out = (self.real_width) * str(sign)
+                out = (self.real_width) * " "
                 if not self.focused:
                     print(out, end="")
                 else:
                     print(out, end="")
                     # print(t.red(out), end="")
-
+        with t.hidden_cursor(), t.location((self.x + int("l" in self.margins)), (self.y + int("u" in self.margins) + 1)):
+            print(self.truncate(str(self.body), t))
         # print margins
         await self.render_margins(t)
 
@@ -115,10 +125,10 @@ class Tile:
         """Render title bar of a Tile"""
         with t.hidden_cursor(), t.location(self.x + int("l" in self.margins), self.y):
             if self.title != "":
-                out = self.title + " " * (self.width - len(self.title) - 1)
+                out = self.title + " " * (self._width - len(self.title) - 1)
                 print(self.truncate(out, t), end="")
             else:
-                out = self.name + " " * (self.width - len(self.name) - 1)
+                out = self.name + " " * (self._width - len(self.name) - 1)
                 print(self.truncate(out, t), end="")
 
     async def render_margins(self, t: Terminal) -> None:
@@ -195,10 +205,11 @@ class InputTile(Tile):
         self.real_height = height
         
 
-    async def input(self, term: Terminal) -> None:
+    def input(self, term: Terminal, lock: threading.Lock) -> None:
         """Input function, REALLY BAD TODO: think about better implementation."""
         inp = ""
         
+        # basically run forever
         while True:
             #set cursor position
             with term.raw(), term.location(len(self.prompt) + self.x + int("l" in self.margins) + len(inp), self.y + self.prompt_position):
@@ -211,36 +222,49 @@ class InputTile(Tile):
                     add_input += next
                     next = term.inkey(timeout=0.001)
             
+                # workaround to have a working ctrl+c in raw mode
+                # and with threads
                 if val == chr(3):
-                    raise KeyboardInterrupt()
+                    os._exit(1)
                 # if normal mode
                 if self.mode == "":
                     if val.code == term.KEY_ESCAPE:
                         self.mode = "layout"
+                        lock.acquire()
                         self.clear_input(term)
+                        lock.release()
                     else:
                         # if enter was pressed, return input
                         if val.code == term.KEY_ENTER:
-                            await self.input_queue.put((self.mode, inp))
+                            self.input_queue.put((self.mode, inp))
+                            lock.acquire()
                             self.clear_input(term)
-                            return
-                        if val.code == term.KEY_BACKSPACE or val.code == term.KEY_DELETE:
+                            lock.release()
+                            inp = ""
+                        elif val.code == term.KEY_BACKSPACE or val.code == term.KEY_DELETE:
+                            lock.acquire()
                             self.clear_input(term)
+                            lock.release()
                             inp = inp[:-1]
                         elif self.input_filter(val):
                             inp += val + add_input
+                        lock.acquire()
                         self.display_prompt(inp, term)
+                        lock.release()
                 # if layout mode
                 elif self.mode == "layout":
                     if val.code == term.KEY_ENTER:
                         self.mode = ""
+                        lock.acquire()
                         self.clear_input(term)
+                        lock.release()
                     else:
                         if self.input_filter(val) or not val.code:
-                            await self.input_queue.put((self.mode, val))
+                            self.input_queue.put((self.mode, val))
+                            inp = ""
                         else:
-                            await self.input_queue.put((self.mode, val.code)) 
-                        return
+                            self.input_queue.put((self.mode, val.code)) 
+                            inp = ""
 
     def clear_input(self, t: Terminal) -> None:
         text = (self.real_width) * " "
@@ -266,7 +290,6 @@ class InputTile(Tile):
         with t.location(self.x, self.y), t.hidden_cursor():
             print(self.prompt, end="")
         print(t.move_xy(len(self.prompt) + self.x + int("l" in self.margins), self.y + self.prompt_position), end="")
-        
 
     def input_filter(self, keystroke) -> str:
         """
@@ -286,10 +309,12 @@ class InputTile(Tile):
 class ChatTile(Tile):
     """Chat tile."""
 
-    def __init__(self,*args, **kwargs) -> None:
+    def __init__(self, chat_with: UserModel, *args, **kwargs) -> None:
         """Init chat Tile"""
         Tile.__init__(self, *args, **kwargs)
-        
+        self._buffer = []
+        self.new_messages = Queue()
+        self.chat_with = chat_with
 
     @property
     def buffer(self) -> List[MessageModel]:
@@ -297,11 +322,63 @@ class ChatTile(Tile):
         return self._buffer
 
     @buffer.setter
-    def buffer(self, buffer: List[MessageModel]) -> None:
+    async def buffer(self, buffer: List[MessageModel]) -> None:
         """Buffer for loaded messages."""
         self._buffer = buffer
-        self.on_buffer_change()
+        await self.on_buffer_change()
 
-    def on_buffer_change(self) -> None:
-        """Something happens on buffer load."""
-        pass
+    async def add_message_to_buffer(self, mess: MessageModel) -> None:
+        """Add new message to buffer (newly received for example)"""
+        self._buffer.insert(0,mess)
+        await self.on_buffer_change()
+
+    async def on_buffer_change(self) -> None:
+        """Something happens on buffer change."""
+        #pass
+        await self.render()
+
+    async def consume_input(self, inp: str) -> None:
+        """
+        Consume user input.
+        
+        right not just add message to a queue, UI manager should 
+        recover it, and then send, put into DB etc
+        """
+        # for debug add message to buffer 
+        await self.add_message_to_buffer(MessageModel(from_user=UserModel("Alice","",""), body=inp,date=datetime.now()))
+
+    async def render(self) -> None:
+        """Render the Tile."""
+
+        t = Terminal()
+
+        await Tile.render(self)
+
+        # hardcoded identity
+        myself = UserModel(username="Alice", id="123", color="none")
+
+        # construct message buffer
+        buffer = []
+        for mes in self._buffer:
+ 
+            message = t.gray(mes.date.strftime("[%H:%M]"))
+            if mes.from_user.username == myself.username:
+                message += (t.gray("[")  + t.green(mes.from_user.username) + t.gray("]> ") + str(mes.body))
+            else:
+                message += (t.gray("[")  + t.red(mes.from_user.username) + t.gray("]> ") + str(mes.body))
+
+            wrapped = t.wrap(message, self.real_width) if self.real_width > 0 else []
+            # we need to reverse because were printing from the bottom up
+            if len(wrapped) >0:
+                wrapped.reverse()
+                buffer += wrapped
+            if len(buffer) >= self.real_height:
+                break
+        
+        if len(buffer) > 0:
+            # print messages
+            for y in range(0 + 1, (self.real_height + 1)): # +1 for title
+                with t.hidden_cursor(), t.location((self.x + int("l" in self.margins)), (self.y + int("u" in self.margins) + self.real_height + 1 - y)):
+                    if len(buffer) > y-1:
+                        print(buffer[y-1], end="")
+
