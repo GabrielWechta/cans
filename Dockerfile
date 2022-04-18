@@ -23,6 +23,25 @@ FROM python:3.8 AS client_dev
 
 WORKDIR /usr/src/app
 
+# installing olm
+RUN apt-get update && apt-get install -y \
+        cmake \
+        libolm-dev
+
+COPY resources/olm /usr/src/app/olm
+
+# buidling olm
+WORKDIR /usr/src/app/olm
+RUN cmake . -Bbuild
+RUN cmake --build build
+RUN make install
+# buidling python binding for olm
+WORKDIR /usr/src/app/olm/python
+RUN make olm-python3
+RUN pip install python-olm
+
+WORKDIR /usr/src/app
+
 # Copy required modules
 COPY client client
 COPY common common
