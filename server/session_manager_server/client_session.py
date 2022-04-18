@@ -12,10 +12,13 @@ class ClientSession:
     """Class representing a client session with the server."""
 
     def __init__(
-        self, conn: ws.WebSocketServerProtocol, public_key_digest: PubKeyDigest
+        self,
+        conn: ws.WebSocketServerProtocol,
+        public_key_digest: PubKeyDigest,
+        subscriptions: List[PubKeyDigest],
     ) -> None:
         """Initialize a client session."""
         self.event_queue: asyncio.Queue = asyncio.Queue()
         self.connection = conn
         self.public_key_digest = public_key_digest
-        self.subscriptions: List[PubKeyDigest] = []
+        self.subscriptions = subscriptions

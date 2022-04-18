@@ -5,9 +5,9 @@ import os
 
 from database_manager_client import DatabaseManager
 from key_manager import KeyManager
+from osal import OSAL
 from session_manager_client import SessionManager
 from user_interface import UserInterface
-from osal import OSAL
 
 
 class Client:
@@ -19,7 +19,7 @@ class Client:
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
         self.osal = OSAL()
-        print(self.osal.hardware_fingerprint())
+        print(f"HWF: {self.osal.hardware_fingerprint()}")
 
         self.__do_logger_config()
 

@@ -7,6 +7,7 @@ them to connection handlers/callbacks.
 import asyncio
 import logging
 import ssl
+from typing import List, Tuple
 
 import websockets.server as ws
 from session_manager_server import SessionManager
@@ -68,7 +69,7 @@ class ConnectionListener:
 
         # Authenticate the user
         try:
-            public_key = await self.__authenticate_user(conn)
+            public_key, subscriptions = await self.__authenticate_user(conn)
             public_key_digest = self.__digest_key(public_key)
             self.log.debug(
                 f"Successfully authenticated user at {conn.remote_address[0]}:"
@@ -79,7 +80,9 @@ class ConnectionListener:
             # delegate further handling to the session
             # manager
             await self.session_manager.authed_user_entry(
-                conn, public_key_digest
+                conn=conn,
+                public_key_digest=public_key_digest,
+                subscriptions=subscriptions,
             )
         except CansServerAuthFailed:
             self.log.error(
@@ -90,7 +93,7 @@ class ConnectionListener:
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
-    ) -> PubKey:
+    ) -> Tuple[PubKey, List[PubKeyDigest]]:
         """Run authentication protocol with the user."""
         self.log.error(
             f"__authenticate_user{conn.remote_address}: Implement me!"
@@ -101,7 +104,7 @@ class ConnectionListener:
         # NOTE: In the alpha-version user simply sends their public key
         # with no further auth
         message: ServerHello = await cans_recv(conn)
-        return message.payload["public_key"]
+        return message.payload["public_key"], message.payload["subscriptions"]
 
     def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
         # TODO: Call src/common code to calculate the hash over the key

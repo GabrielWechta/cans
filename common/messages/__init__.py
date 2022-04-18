@@ -2,9 +2,16 @@
 
 from .message_api import cans_recv, cans_send
 from .messages import (
+    ActiveFriends,
+    AddBlacklist,
+    AddSubscription,
     CansMessage,
     CansMsgId,
+    PeerLogin,
+    PeerLogout,
     PeerUnavailable,
+    RemoveBlacklist,
+    RemoveSubscription,
     ServerHello,
     UserMessage,
 )
@@ -17,3 +24,10 @@ assert CansMsgId
 assert PeerUnavailable
 assert ServerHello
 assert UserMessage
+assert PeerLogin
+assert PeerLogout
+assert AddBlacklist
+assert AddSubscription
+assert RemoveBlacklist
+assert RemoveSubscription
+assert ActiveFriends
