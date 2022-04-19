@@ -3,7 +3,6 @@ import asyncio
 import concurrent
 import hashlib
 import signal
-import threading
 from datetime import datetime
 from random import choice
 from typing import Any, Callable, Mapping, Optional
@@ -15,8 +14,6 @@ from ..user_interface import UserInterface
 from .tiles import ChatTile, HeaderTile, InputTile, Tile
 from .tiling_managers import MonadTallLayout
 from .view import View
-
-cursorLock = threading.Lock()
 
 ui = UserInterface()
 
@@ -181,14 +178,15 @@ async def run_in_thread(task: Callable, *args: Any) -> None:
     # it kinda works I guess somehow, prolly not thread safe
     # Run in a custom thread pool:
     pool = concurrent.futures.ThreadPoolExecutor()
-    result = loop.run_in_executor(executor=pool, func=task, args=args)
+    result = loop.run_in_executor(pool, task, *args)  # noqa: FKA01
     result = await result
 
 
-loop.create_task(run_in_thread(task=footer.input, args=(term, loop)))
+loop.create_task(run_in_thread(footer.input, term, loop))  # noqa: FKA01
+# i hate linters
 
 
-async def test2(lock: threading.Lock) -> None:
+async def send_test_messages_from_bob() -> None:
     """
     Eh it does steal the cursor.
 
@@ -199,17 +197,8 @@ async def test2(lock: threading.Lock) -> None:
         message = MessageModel(
             from_user=bob, body="test message", date=datetime.now()
         )
-        await (render_threadsafe(chat.add_message_to_buffer, message))
+        await chat.add_message_to_buffer(message)
         await asyncio.sleep(1)
-
-
-async def render_threadsafe(
-    render_func: Callable, *args: Any, **kwargs: Any
-) -> None:
-    """Will have to implement something like that in the 'real' function."""
-    cursorLock.acquire()
-    await render_func(*args, **kwargs)
-    cursorLock.release()
 
 
 async def on_resize() -> None:
@@ -219,18 +208,18 @@ async def on_resize() -> None:
     )
     header.width = term.width
     # footer.on_resize(term)
-    await (render_threadsafe(monad.render_all))
-    await (render_threadsafe(header.render))
+    await monad.render_all()
+    await header.render()
 
 
-loop.create_task(test2(cursorLock))
+loop.create_task(send_test_messages_from_bob())
 
 # signal handling, it kinda works
 signal.signal(signal.SIGWINCH, lambda x, y: loop.create_task(on_resize()))
 
 
 async def test() -> None:
-    """Test."""
+    """Test the input function."""
     while True:
         inp_tuple = await (footer.input_queue.get())
 
@@ -249,28 +238,22 @@ async def test() -> None:
                 ]
 
                 if cmd == monad.add:
-                    cursorLock.acquire()
                     cmd(Tile(choice(signs) + " name"))
-                    cursorLock.release()
                 elif cmd == monad.remove:
                     target = monad.focused
-                    cursorLock.acquire()
                     try:
                         cmd(monad.tiles[target])
                     except IndexError:
                         pass
-                    cursorLock.release()
                 else:
-                    cursorLock.acquire()
                     cmd()
-                    cursorLock.release()
                 if cmd in focus_cmds:
-                    await render_threadsafe(monad.render_focus)
+                    await monad.render_focus()
                 else:
-                    await render_threadsafe(monad.render_all)
+                    await monad.render_all()
         elif mode == "":
             if monad.current_tile:
-                await render_threadsafe(monad.current_tile.consume_input, inp)
+                await monad.current_tile.consume_input(inp)
 
 
 loop.run_until_complete(test())

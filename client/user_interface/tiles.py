@@ -252,6 +252,9 @@ class InputTile(Tile):
 
         # basically run forever
         while True:
+            # we have to somehow now that terminal has resized from this thread
+            # as the signals only work in main,
+            # this is just a workaround
             if term.width != self.width or self.y != term.height - self.height:
                 run_coroutine_threadsafe(self.on_resize(term), loop)
 
@@ -274,45 +277,35 @@ class InputTile(Tile):
                 if self.mode == "":
                     if val.code == term.KEY_ESCAPE:
                         self.mode = "layout"
-                        # lock.acquire()
                         run_coroutine_threadsafe(self.clear_input(term), loop)
-                        # lock.release()
                     else:
                         # if enter was pressed, return input
                         if val.code == term.KEY_ENTER:
                             run_coroutine_threadsafe(
                                 self.input_queue.put((self.mode, inp)), loop
                             )
-                            # lock.acquire()
                             run_coroutine_threadsafe(
                                 self.clear_input(term), loop
                             )
-                            # lock.release()
                             inp = ""
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
                         ):
-                            # lock.acquire()
                             run_coroutine_threadsafe(
                                 self.clear_input(term), loop
                             )
-                            # lock.release()
                             inp = inp[:-1]
                         elif self.input_filter(val):
                             inp += val + add_input
-                        # lock.acquire()
                         run_coroutine_threadsafe(
                             self.display_prompt(inp, term), loop
                         )
-                        # lock.release()
                 # if layout mode
                 elif self.mode == "layout":
                     if val.code == term.KEY_ENTER:
                         self.mode = ""
-                        # lock.acquire()
                         run_coroutine_threadsafe(self.clear_input(term), loop)
-                        # lock.release()
                     else:
                         if self.input_filter(val) or not val.code:
                             run_coroutine_threadsafe(
