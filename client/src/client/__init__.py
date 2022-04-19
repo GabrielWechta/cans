@@ -35,11 +35,17 @@ class Client:
         # TODO: Do application initialization (create directories, keys etc.)
         #       if the user logs in for the first time (some crude UI will
         #       be needed here)
+
         self.ui = UserInterface()
 
         self.event_loop = asyncio.get_event_loop()
         self.key_manager = KeyManager(identity)
         self.db_manager = DatabaseManager()
+
+        # TODO: During early startup pickled olm.Account should be un-pickled
+        #       and passed to TripleDiffieHellmanInterface and SessionManager
+
+        self.tdh_interface = TripleDiffieHellmanInterface()
 
         # Session manager is the last needed component
         # TODO: Perhaps resolve this dependency more cleanly or get rid of it
