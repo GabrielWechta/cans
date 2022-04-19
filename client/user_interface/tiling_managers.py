@@ -177,8 +177,9 @@ class MonadTallLayout:
 
         self.use_margins = use_margins
         self.min_secondary_size += int(use_margins)
-        self.max_displayed_windows = math.floor(self.screen_rect.height / self.min_secondary_size)
-        
+        self.max_displayed_windows = math.floor(
+            self.screen_rect.height / self.min_secondary_size
+        )
 
     # 'Hack' for linter coz it has a problem :)
     def clone(self) -> "MonadTallLayout":
@@ -217,8 +218,10 @@ class MonadTallLayout:
         )
         self._relative_sizes_to_absolute(relative_sizes)
 
-        self.max_displayed_windows = math.floor(self.screen_rect.height / self.min_secondary_size)
-        
+        self.max_displayed_windows = math.floor(
+            self.screen_rect.height / self.min_secondary_size
+        )
+
         self.layout_all()
 
     @property
@@ -228,11 +231,11 @@ class MonadTallLayout:
 
     def add(self, tile: Tile) -> Optional[str]:
         """Add tile to layout."""
-        if (len(self.tiles) > self.max_displayed_windows):
+        if len(self.tiles) > self.max_displayed_windows:
             return "Max amount of tiles reached"
         self.tiles.add(tile, tile_position=MonadTallLayout.new_tile_position)
         self.cmd_normalize()
-        
+        return None
 
     def remove(self, tile: Tile) -> None:
         """Remove tile from layout."""
@@ -311,11 +314,10 @@ class MonadTallLayout:
                 self._get_absolute_size_from_relative(rel_val) + pad
             )
         # if any height is lesser than minimum, normalize heights
-        #for val in self.absolute_sizes:
+        # for val in self.absolute_sizes:
         #    if val < self.min_secondary_size:
         #        self.cmd_normalize()
         #        break
-        
 
     def cmd_reset(self, ratio: float = None, redraw: bool = True) -> None:
         """Reset Layout."""
@@ -361,7 +363,7 @@ class MonadTallLayout:
     def _set_secondary_heights(self) -> None:
         """Calculate y and height of tiles."""
         if len(self.tiles) > 1:
-            n = len(self.absolute_sizes) 
+            n = len(self.absolute_sizes)
             # calculate absolute pixel height values and positions
             height = 0
             for i in range(0, n):
@@ -481,7 +483,8 @@ class MonadTallLayout:
         return left
 
     @property
-    def current_tile(self):
+    def current_tile(self) -> Optional[Tile]:
+        """Return currently focused Tile."""
         return self.tiles.current_tile
 
     def shrink_down_shared(self, idx: int, amt: int) -> int:
