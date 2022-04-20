@@ -6,6 +6,7 @@ import os
 from common.keys import PubKeyDigest
 
 from .database_manager_client import DatabaseManager
+from .e2e_encryption import TripleDiffieHellmanInterface
 from .key_manager import KeyManager
 from .osal import OSAL
 from .session_manager_client import SessionManager

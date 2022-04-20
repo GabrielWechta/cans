@@ -1,8 +1,6 @@
 """Encryption utility."""
 
-from olm import Account, InboundSession, OutboundSession
-
-from resources.olm.python.olm import OlmPreKeyMessage
+from olm import Account, InboundSession, OlmPreKeyMessage, OutboundSession
 
 
 class TripleDiffieHellmanInterface:
