@@ -3,10 +3,11 @@
 import asyncio
 import os
 
+from olm import Account
+
 from common.keys import PubKeyDigest
 
 from .database_manager_client import DatabaseManager
-from .e2e_encryption import TripleDiffieHellmanInterface
 from .key_manager import KeyManager
 from .osal import OSAL
 from .session_manager_client import SessionManager
@@ -45,13 +46,14 @@ class Client:
 
         # TODO: During early startup pickled olm.Account should be un-pickled
         #       and passed to TripleDiffieHellmanInterface and SessionManager
-
-        self.tdh_interface = TripleDiffieHellmanInterface()
+        account = Account()
 
         # Session manager is the last needed component
         # TODO: Perhaps resolve this dependency more cleanly or get rid of it
         self.session_manager = SessionManager(
-            key_manager=self.key_manager, hardcoded_peer=hardcoded_peer
+            key_manager=self.key_manager,
+            hardcoded_peer=hardcoded_peer,
+            account=account,
         )
 
     def run(self) -> None:

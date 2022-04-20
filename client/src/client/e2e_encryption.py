@@ -6,7 +6,7 @@ from olm import Account, InboundSession, OlmPreKeyMessage, OutboundSession
 class TripleDiffieHellmanInterface:
     """Class for managing Triple Diffie Hellman protocol."""
 
-    def __int__(self, account: Account) -> None:
+    def __init__(self, account: Account) -> None:
         """Initialize interface for Triple Diffie Hellman."""
         self.account = account
 

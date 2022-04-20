@@ -2,12 +2,12 @@
 
 from enum import IntEnum, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
 
-from .keys import PubKey, PubKeyDigest
+from .keys import PubKey, PubKeyDigest, PublicKeysBundle
 
 CansSerial = str
 
@@ -29,6 +29,7 @@ class CansMsgId(IntEnum):
     ACTIVE_FRIENDS = 10
     GET_KEY_BUNDLE_REQ = 11
     GET_KEY_BUNDLE_RESP = 12
+    REPLENISH_ONE_TIME_KEYS = 13
 
 
 class CansMessage:
@@ -78,11 +79,11 @@ class ServerHello(CansMessage):
     """
 
     def __init__(
-        self,
-        public_key: PubKey,
-        subscriptions: List[PubKeyDigest],
-        identity_key: str,
-        one_time_keys: Dict[str, str],
+            self,
+            public_key: PubKey,
+            subscriptions: List[PubKeyDigest],
+            identity_key: str,
+            one_time_keys: Dict[str, str],
     ) -> None:
         """Create a dummy handshake message."""
         super().__init__()
@@ -99,12 +100,14 @@ class ServerHello(CansMessage):
 class PeerLogin(CansMessage):
     """Peer login notification."""
 
-    def __init__(self, receiver: PubKeyDigest, peer: PubKeyDigest) -> None:
+    def __init__(self, receiver: PubKeyDigest, peer: PubKeyDigest,
+                 public_keys_bundle: PublicKeysBundle) -> None:
         """Create a peer login notification."""
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_LOGIN
         self.header.receiver = receiver
-        self.payload = {"peer": peer}
+        self.payload = {"peer": peer,
+                        "public_keys_bundle": public_keys_bundle}
 
 
 class PeerLogout(CansMessage):
@@ -166,7 +169,8 @@ class ActiveFriends(CansMessage):
     """Notify the client during handshake who's online."""
 
     def __init__(
-        self, receiver: PubKeyDigest, active_friends: List[PubKeyDigest]
+            self, receiver: PubKeyDigest,
+            active_friends: Dict[PubKeyDigest, PublicKeysBundle]
     ) -> None:
         """Create an active friends notification."""
         super().__init__()
@@ -190,7 +194,7 @@ class GetKeyBundleResp(CansMessage):
     """Send double-ratched key bundle back to the requestor."""
 
     def __init__(
-        self, receiver: PubKeyDigest, identity_key: str, one_time_key: str
+            self, receiver: PubKeyDigest, identity_key: str, one_time_key: str
     ) -> None:
         """Create a key bundle response."""
         super().__init__()
@@ -200,6 +204,22 @@ class GetKeyBundleResp(CansMessage):
         self.payload = {
             "identity_key": identity_key,
             "one_time_key": one_time_key,
+        }
+
+
+class ReplenishOneTimeKeys(CansMessage):
+    """Send replenish one time keys request to the client."""
+
+    def __init__(
+            self, receiver: PubKeyDigest, one_time_keys_num: int
+    ) -> None:
+        """Create a replenish request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS
+        self.header.sender = None
+        self.header.receiver = receiver
+        self.payload = {
+            "one_time_keys_num": one_time_keys_num,
         }
 
 
@@ -216,7 +236,7 @@ class CansDeserializationError(CansMessageException):
 
 
 async def cans_recv(
-    socket: Union[WebSocketClientProtocol, WebSocketServerProtocol]
+        socket: Union[WebSocketClientProtocol, WebSocketServerProtocol]
 ) -> CansMessage:
     """Receive a CANS message from a socket."""
     serial = str(await socket.recv())
@@ -224,8 +244,8 @@ async def cans_recv(
 
 
 async def cans_send(
-    msg: CansMessage,
-    socket: Union[WebSocketClientProtocol, WebSocketServerProtocol],
+        msg: CansMessage,
+        socket: Union[WebSocketClientProtocol, WebSocketServerProtocol],
 ) -> None:
     """Push a CANS message to a socket."""
     serial = __serialize(msg)
