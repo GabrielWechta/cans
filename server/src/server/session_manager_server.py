@@ -12,6 +12,7 @@ from common.messages import (
     ActiveFriends,
     CansMessage,
     CansMsgId,
+    GetKeyBundleResp,
     PeerLogin,
     PeerLogout,
     PeerUnavailable,
@@ -58,6 +59,8 @@ class SessionManager:
         conn: WebSocketServerProtocol,
         public_key_digest: PubKeyDigest,
         subscriptions: List[PubKeyDigest],
+        identity_key: str,
+        one_time_keys: Dict[str, str],
     ) -> None:
         """Handle an authenticated user."""
         # Save the session to have consistent state when
@@ -66,6 +69,8 @@ class SessionManager:
             conn=conn,
             public_key_digest=public_key_digest,
             subscriptions=subscriptions,
+            identity_key=identity_key,
+            one_time_keys=one_time_keys,
         )
         self.sessions[public_key_digest] = session
 
@@ -130,9 +135,9 @@ class SessionManager:
         """Handle upstream traffic, i.e. client to server."""
         while True:
             message = await cans_recv(session.connection)
+
             sender = message.header.sender
             receiver = message.header.receiver
-
             self.log.debug(
                 f"Handling upstream message from {sender} to {receiver}"
             )
@@ -146,9 +151,27 @@ class SessionManager:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle a control message from the user."""
-        # TODO: Add handling of control messages or remove if redundant
-        assert message
-        assert session
+        if message.header.msg_id == CansMsgId.GET_KEY_BUNDLE_REQ:
+            # Handle key bundle request
+            peer = message.payload["peer"]
+            if peer in self.sessions.keys():
+                # Create the response
+                response = GetKeyBundleResp(
+                    receiver=message.header.sender,
+                    identity_key=self.sessions[peer].identity_key,
+                    one_time_key=self.sessions[peer].pop_one_time_key(),
+                )
+                # Send the response back to client
+                await self.__route_message(response)
+
+            else:
+                self.log.error(f"Requested key bundle for offline user {peer}")
+
+        else:
+            self.log.error(
+                "Received unsupported control message:"
+                + f" {message.header.msg_id}"
+            )
 
     async def __handle_downstream(self, session: ClientSession) -> None:
         """Handle downstream traffic, i.e. server to client."""

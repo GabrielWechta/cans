@@ -38,7 +38,6 @@ RUN make install
 # buidling python binding for olm
 WORKDIR /usr/src/app/olm/python
 RUN make olm-python3
-#RUN pip install python-olm
 
 WORKDIR /usr/src/app
 

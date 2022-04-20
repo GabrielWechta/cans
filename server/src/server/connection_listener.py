@@ -7,7 +7,7 @@ them to connection handlers/callbacks.
 import asyncio
 import logging
 import ssl
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import websockets.server as ws
 
@@ -74,7 +74,12 @@ class ConnectionListener:
 
         # Authenticate the user
         try:
-            public_key, subscriptions = await self.__authenticate_user(conn)
+            (
+                public_key,
+                subscriptions,
+                identity_key,
+                one_time_keys,
+            ) = await self.__authenticate_user(conn)
             public_key_digest = self.__digest_key(public_key)
             self.log.debug(
                 f"Successfully authenticated user at {conn.remote_address[0]}:"
@@ -88,6 +93,8 @@ class ConnectionListener:
                 conn=conn,
                 public_key_digest=public_key_digest,
                 subscriptions=subscriptions,
+                identity_key=identity_key,
+                one_time_keys=one_time_keys,
             )
         except CansServerAuthFailed:
             self.log.error(
@@ -98,7 +105,7 @@ class ConnectionListener:
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
-    ) -> Tuple[PubKey, List[PubKeyDigest]]:
+    ) -> Tuple[PubKey, List[PubKeyDigest], str, Dict[str, str]]:
         """Run authentication protocol with the user."""
         self.log.error(
             f"__authenticate_user{conn.remote_address}: Implement me!"
@@ -109,7 +116,12 @@ class ConnectionListener:
         # NOTE: In the alpha-version user simply sends their public key
         # with no further auth
         message: ServerHello = await cans_recv(conn)
-        return message.payload["public_key"], message.payload["subscriptions"]
+        return (
+            message.payload["public_key"],
+            message.payload["subscriptions"],
+            message.payload["identity_key"],
+            message.payload["one_time_keys"],
+        )
 
     def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
         # TODO: Call src/common code to calculate the hash over the key

@@ -2,7 +2,7 @@
 
 from enum import IntEnum, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
@@ -27,6 +27,8 @@ class CansMsgId(IntEnum):
     SHARE_CONTACTS = 8
     PEER_UNAVAILABLE = 9  # TODO: Remove this
     ACTIVE_FRIENDS = 10
+    GET_KEY_BUNDLE_REQ = 11
+    GET_KEY_BUNDLE_RESP = 12
 
 
 class CansMessage:
@@ -76,7 +78,11 @@ class ServerHello(CansMessage):
     """
 
     def __init__(
-        self, public_key: PubKey, subscriptions: List[PubKeyDigest]
+        self,
+        public_key: PubKey,
+        subscriptions: List[PubKeyDigest],
+        identity_key: str,
+        one_time_keys: Dict[str, str],
     ) -> None:
         """Create a dummy handshake message."""
         super().__init__()
@@ -85,6 +91,8 @@ class ServerHello(CansMessage):
         self.payload = {
             "public_key": public_key,
             "subscriptions": subscriptions,
+            "identity_key": identity_key,
+            "one_time_keys": one_time_keys,
         }
 
 
@@ -165,6 +173,34 @@ class ActiveFriends(CansMessage):
         self.header.msg_id = CansMsgId.ACTIVE_FRIENDS
         self.header.receiver = receiver
         self.payload = {"friends": active_friends}
+
+
+class GetKeyBundleReq(CansMessage):
+    """Request peer's double-ratched key bundle."""
+
+    def __init__(self, peer: PubKeyDigest) -> None:
+        """Create a key bundle request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_REQ
+        self.header.receiver = None
+        self.payload = {"peer": peer}
+
+
+class GetKeyBundleResp(CansMessage):
+    """Send double-ratched key bundle back to the requestor."""
+
+    def __init__(
+        self, receiver: PubKeyDigest, identity_key: str, one_time_key: str
+    ) -> None:
+        """Create a key bundle response."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_RESP
+        self.header.sender = None
+        self.header.receiver = receiver
+        self.payload = {
+            "identity_key": identity_key,
+            "one_time_key": one_time_key,
+        }
 
 
 class CansMessageException(Exception):
