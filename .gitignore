@@ -136,3 +136,6 @@ certs/*.csr
 
 # Ignore the log volume
 log/
+
+# Quick fix for olm
+!resources/olm/lib
