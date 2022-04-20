@@ -4,12 +4,12 @@ import asyncio
 import logging
 from typing import Any, Dict, List
 
-from database_manager_server import DatabaseManager
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
 from common.keys import PubKeyDigest
 from common.messages import (
+    ActiveFriends,
     CansMessage,
     CansMsgId,
     PeerLogin,
@@ -18,9 +18,9 @@ from common.messages import (
     cans_recv,
     cans_send,
 )
-from common.messages.messages import ActiveFriends
 
 from .client_session import ClientSession
+from .database_manager_server import DatabaseManager
 from .session_event import (
     EventType,
     LoginEvent,
@@ -184,7 +184,7 @@ class SessionManager:
             await self.__send_event(
                 event, self.sessions[message.header.receiver]
             )
-        elif message.header.sender != "":
+        elif message.header.sender:
             # Do not reroute server messages so as to not get
             # into an infinite recursion
             notification = PeerUnavailable(
