@@ -1,11 +1,11 @@
-"""Backend application entry point."""
+"""CANS communicator backend."""
 
 import asyncio
 import logging
 import logging.handlers
 import os
 
-from connection_listener import ConnectionListener
+from .connection_listener import ConnectionListener
 
 
 class Server:
@@ -16,11 +16,18 @@ class Server:
         # Parse environment variables
         self.hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.port = int(os.environ["CANS_PORT"])
+        self.certpath = os.environ["CANS_SELF_SIGNED_CERT_PATH"]
+        self.keypath = os.environ["CANS_PRIVATE_KEY_PATH"]
 
         # Prepare resources
         self.__do_logger_config()
         self.event_loop = asyncio.get_event_loop()
-        self.connection_listener = ConnectionListener(self.hostname, self.port)
+        self.connection_listener = ConnectionListener(
+            hostname=self.hostname,
+            port=self.port,
+            certpath=self.certpath,
+            keypath=self.keypath,
+        )
 
     def run(self) -> None:
         """Run the connection listener."""
@@ -49,8 +56,3 @@ class Server:
         logger.setLevel(logging.INFO)
         # NOTE: Uncomment to enable debug logging during development
         # logger.setLevel(logging.DEBUG)
-
-
-if __name__ == "__main__":
-    server = Server()
-    server.run()

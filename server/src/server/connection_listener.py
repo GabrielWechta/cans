@@ -10,10 +10,11 @@ import ssl
 from typing import List, Tuple
 
 import websockets.server as ws
-from session_manager_server import SessionManager
 
 from common.keys import PubKey, PubKeyDigest
 from common.messages import ServerHello, cans_recv
+
+from .session_manager_server import SessionManager
 
 
 class CansServerAuthFailed(Exception):
@@ -25,10 +26,14 @@ class CansServerAuthFailed(Exception):
 class ConnectionListener:
     """Listen on a public port and authenticate incoming clients."""
 
-    def __init__(self, hostname: str, port: int) -> None:
+    def __init__(
+        self, hostname: str, port: int, certpath: str, keypath: str
+    ) -> None:
         """Construct a connection listener instance."""
         self.hostname = hostname
         self.port = port
+        self.certpath = certpath
+        self.keypath = keypath
         self.session_manager = SessionManager()
         self.log = logging.getLogger("cans-logger")
 
@@ -36,13 +41,13 @@ class ConnectionListener:
         """Open a public port and listen for connections."""
         self.log.info(f"Hostname is {self.hostname}")
 
-        sslContext = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        sslContext.load_cert_chain(
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(
             # TODO: Resolve the certificate and key paths dynamically using
             # e.g. .env file (at least serverside, client uses the local
             # self-signed cert only for proof-of-concept purposes anyway)
-            certfile="certs/CansCert.pem",
-            keyfile="certs/CansKey.pem",
+            certfile=self.certpath,
+            keyfile=self.keypath,
         )
 
         self.log.info(
@@ -53,7 +58,7 @@ class ConnectionListener:
             ws_handler=self.__handle_connection,
             host=self.hostname,
             port=self.port,
-            ssl=sslContext,
+            ssl=ssl_context,
         ):
             # TODO: Implement graceful shutdown
             await asyncio.Future()

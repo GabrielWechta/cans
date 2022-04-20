@@ -19,9 +19,9 @@ class OSAL:
         self._home_dir = Path.home() / ".cans"
         self._db_path = self._home_dir / "user_data.db"
         self._keys_dir = self._home_dir / "keys"
-        self.__cans_setup()
+        self._cans_setup()
 
-    def __cans_setup(self) -> None:
+    def _cans_setup(self) -> None:
         """Create .cans folder if it doesn't exist."""
         if not path.isdir(self._home_dir):
             mkdir(self._home_dir, mode=0o700)
