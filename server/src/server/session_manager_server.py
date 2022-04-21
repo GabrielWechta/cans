@@ -126,21 +126,36 @@ class SessionManager:
 
         self.log.debug(f"Sent login notification to {len(subscribers)} users")
 
+    def __upstream_message_valid(
+        self, message: CansMessage, session: ClientSession
+    ) -> bool:
+        """Validate an inbound message with regards to the current session."""
+        return message.header.sender == session.public_key_digest
+
     async def __handle_upstream(self, session: ClientSession) -> None:
         """Handle upstream traffic, i.e. client to server."""
         while True:
             message = await cans_recv(session.connection)
-            sender = message.header.sender
-            receiver = message.header.receiver
+            if self.__upstream_message_valid(message, session):
+                sender = message.header.sender
+                receiver = message.header.receiver
+                self.log.debug(
+                    f"Handling upstream message from {sender} to {receiver}"
+                )
 
-            self.log.debug(
-                f"Handling upstream message from {sender} to {receiver}"
-            )
-
-            if self.__is_user_message(message):
-                await self.__route_message(message)
+                if self.__is_user_message(message):
+                    await self.__route_message(message)
+                else:
+                    await self.__handle_control_message(message, session)
             else:
-                await self.__handle_control_message(message, session)
+                # TODO: Should we terminate the connection here?
+                self.log.warning(
+                    "Received malformed message from"
+                    + f" {session.public_key_digest}:"
+                    + f" id={message.header.msg_id},"
+                    + f" sender={message.header.sender},"
+                    + f" receiver={message.header.receiver}"
+                )
 
     async def __handle_control_message(
         self, message: CansMessage, session: ClientSession
