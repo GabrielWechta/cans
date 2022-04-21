@@ -89,7 +89,10 @@ class SessionManager:
         for friend in subscriptions:
             if friend in self.sessions.keys():
                 peer_session = self.sessions[friend]
-                active_friends[friend] = (peer_session.identity_key, peer_session.pop_one_time_key())
+                active_friends[friend] = (
+                    peer_session.identity_key,
+                    peer_session.pop_one_time_key(),
+                )
 
         active_friends_notification = ActiveFriends(
             public_key_digest, active_friends
@@ -127,8 +130,9 @@ class SessionManager:
 
         # Notify all subscribers
         for sub in subscribers:
-            event = LoginEvent(public_key_digest)
-            await self.__send_event(event, self.sessions[sub])
+            if sub in self.sessions.keys():
+                event = LoginEvent(public_key_digest)
+                await self.__send_event(event, self.sessions[sub])
 
         self.log.debug(f"Sent login notification to {len(subscribers)} users")
 
@@ -261,12 +265,16 @@ class SessionManager:
         assert isinstance(event.payload, dict)
         payload: Dict[str, Any] = event.payload
         peer = payload["peer"]
-        peer_key_bundle = (self.sessions[peer].identity_key, self.sessions[peer].pop_one_time_key())
+        peer_key_bundle = (
+            self.sessions[peer].identity_key,
+            self.sessions[peer].pop_one_time_key(),
+        )
         # Wrap the event in a CANS message and send downstream to the client
         message = PeerLogin(
             receiver=session.public_key_digest,
             peer=peer,
-            public_keys_bundle=peer_key_bundle)
+            public_keys_bundle=peer_key_bundle,
+        )
         await cans_send(message, session.connection)
 
     async def __handle_event_logout(

@@ -5,19 +5,20 @@ import logging
 import ssl
 
 import websockets.client as ws
-from olm import Account, OlmPreKeyMessage, OlmMessage
+from olm import Account, OlmMessage, OlmPreKeyMessage
 
 from common.keys import PubKeyDigest
 from common.messages import (
+    ActiveFriends,
     CansMessage,
     CansMsgId,
     ServerHello,
     UserMessage,
     cans_recv,
-    cans_send, ActiveFriends,
+    cans_send,
 )
 
-from .e2e_encryption import TripleDiffieHellmanInterface, DoubleRatchetSession
+from .e2e_encryption import DoubleRatchetSession, TripleDiffieHellmanInterface
 from .key_manager import KeyManager
 
 
@@ -39,10 +40,10 @@ class SessionManager:
     """
 
     def __init__(
-            self,
-            key_manager: KeyManager,
-            hardcoded_peer: PubKeyDigest,
-            account: Account,
+        self,
+        key_manager: KeyManager,
+        hardcoded_peer: PubKeyDigest,
+        account: Account,
     ) -> None:
         """Construct a session manager instance."""
         self.account = account
@@ -83,21 +84,26 @@ class SessionManager:
             # Say hello to the server
             identity_key = self.account.identity_keys["curve25519"]
             one_time_keys = self.tdh_interface.get_one_time_keys(3)
-            hello = ServerHello(public_key=public_key,
-                                subscriptions=[self.hardcoded_peer_key],
-                                identity_key=identity_key,
-                                one_time_keys=one_time_keys)
+            hello = ServerHello(
+                public_key=public_key,
+                subscriptions=[self.hardcoded_peer_key],
+                identity_key=identity_key,
+                one_time_keys=one_time_keys,
+            )
 
             await cans_send(hello, conn)
 
             # For sure this message is ActiveFriends.
             active_friends_message: ActiveFriends = await cans_recv(conn)
 
-            for pub_key_digest, public_key_bundle in \
-                    active_friends_message.payload["friends"].items():
+            for (
+                pub_key_digest,
+                public_key_bundle,
+            ) in active_friends_message.payload["friends"].items():
                 identity_key, one_time_key = public_key_bundle
                 self.potential_sessions[pub_key_digest] = PotentialSession(
-                    identity_key=identity_key, one_time_key=one_time_key)
+                    identity_key=identity_key, one_time_key=one_time_key
+                )
 
             await asyncio.gather(
                 self._handle_upstream(conn), self._handle_downstream(conn)
@@ -109,27 +115,34 @@ class SessionManager:
 
         while True:
             dummy_message = self._user_message_to(self.hardcoded_peer_key)
-            plaintext = f"Hello {self.hardcoded_peer_key}, this is {public_key}"
+            plaintext = (
+                f"Hello {self.hardcoded_peer_key}, this is {public_key}"
+            )
             receiver = dummy_message.header.receiver
 
             if receiver in self.potential_sessions.keys():
                 potential_session = self.potential_sessions.pop(receiver)
-                identity_key, one_time_key = potential_session.identity_key, potential_session.one_time_key
+                identity_key, one_time_key = (
+                    potential_session.identity_key,
+                    potential_session.one_time_key,
+                )
                 active_session = ActiveSession(account=self.account)
-                active_session.start_outbound_session(peer_id_key=identity_key,
-                                                      peer_one_time_key=one_time_key)
+                active_session.start_outbound_session(
+                    peer_id_key=identity_key, peer_one_time_key=one_time_key
+                )
                 self.active_sessions[receiver] = active_session
 
             if receiver in self.active_sessions.keys():
                 pre_key_message = self.active_sessions[receiver].encrypt(
-                    plaintext)
+                    plaintext
+                )
                 dummy_message.payload = pre_key_message.ciphertext
 
             await cans_send(dummy_message, conn)
             await asyncio.sleep(2)
 
     async def _handle_downstream(
-            self, conn: ws.WebSocketClientProtocol
+        self, conn: ws.WebSocketClientProtocol
     ) -> None:
         """Handle downstream traffic, i.e. server to client."""
         while True:
@@ -158,19 +171,21 @@ class SessionManager:
             plaintext = self.active_sessions[sender].decrypt(pre_key_message)
             print(
                 f"Received encrypted user message {ciphertext} from"
-                + f" {message.header.sender} that decrypted to {plaintext}.")
+                + f" {message.header.sender} that decrypted to {plaintext}."
+            )
         elif sender in self.active_sessions.keys():
             olm_message = OlmMessage(ciphertext)
             plaintext = self.active_sessions[sender].decrypt(olm_message)
             print(
                 f"Received encrypted user message {ciphertext} from"
-                + f" {message.header.sender} that decrypted to {plaintext}.")
+                + f" {message.header.sender} that decrypted to {plaintext}."
+            )
         else:
             # TODO implement behaviour of new user message while doing UI
             print("User message from the other side of the moon.")
 
     async def _handle_message_peer_unavailable(
-            self, message: CansMessage
+        self, message: CansMessage
     ) -> None:
         """Handle message type PEER_UNAVAILABLE."""
         peer = message.payload["peer"]
@@ -181,7 +196,8 @@ class SessionManager:
         peer = message.payload["peer"]
         identity_key, one_time_key = message.payload["public_keys_bundle"]
         self.potential_sessions[peer] = PotentialSession(
-            identity_key=identity_key, one_time_key=one_time_key)
+            identity_key=identity_key, one_time_key=one_time_key
+        )
 
         print(f"Peer {peer} just logged in!")
 
