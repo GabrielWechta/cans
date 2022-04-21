@@ -15,7 +15,7 @@ class TripleDiffieHellmanInterface:
         self.account.generate_one_time_keys(number_of_keys)
         one_time_keys = self.account.one_time_keys
         self.account.mark_keys_as_published()
-        return one_time_keys
+        return one_time_keys["curve25519"]
 
     def get_identity_key(self) -> str:
         """Get public identity key."""
@@ -63,4 +63,4 @@ class DoubleRatchetSession:
             f"This account does not have initialized DR session."
         )
 
-        return self.session.decrypt(ciphertext=ciphertext)
+        return self.session.decrypt(message=ciphertext)

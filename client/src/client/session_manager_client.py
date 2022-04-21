@@ -5,7 +5,7 @@ import logging
 import ssl
 
 import websockets.client as ws
-from olm import Account, OlmPreKeyMessage
+from olm import Account, OlmPreKeyMessage, OlmMessage
 
 from common.keys import PubKeyDigest
 from common.messages import (
@@ -77,7 +77,8 @@ class SessionManager:
 
             if "Alice" in public_key:
                 # Test peer unavailable and login notifications
-                await asyncio.sleep(5)
+                print("Alice lagging behind a bit...")
+                await asyncio.sleep(3)
 
             # Say hello to the server
             identity_key = self.account.identity_keys["curve25519"]
@@ -93,7 +94,7 @@ class SessionManager:
             active_friends_message: ActiveFriends = await cans_recv(conn)
 
             for pub_key_digest, public_key_bundle in \
-                    active_friends_message.payload["friends"]:
+                    active_friends_message.payload["friends"].items():
                 identity_key, one_time_key = public_key_bundle
                 self.potential_sessions[pub_key_digest] = PotentialSession(
                     identity_key=identity_key, one_time_key=one_time_key)
@@ -125,7 +126,7 @@ class SessionManager:
                 dummy_message.payload = pre_key_message.ciphertext
 
             await cans_send(dummy_message, conn)
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
 
     async def _handle_downstream(
             self, conn: ws.WebSocketClientProtocol
@@ -149,14 +150,18 @@ class SessionManager:
         ciphertext = message.payload
 
         if sender in self.potential_sessions.keys():
+            pre_key_message = OlmPreKeyMessage(ciphertext)
             self.potential_sessions.pop(sender)
             active_session = ActiveSession(account=self.account)
-            pre_key_message = OlmPreKeyMessage(ciphertext)
             active_session.start_inbound_session(pre_key_message)
             self.active_sessions[sender] = active_session
-
-        if sender in self.active_sessions.keys():
-            plaintext = self.active_sessions[sender].decrypt(ciphertext)
+            plaintext = self.active_sessions[sender].decrypt(pre_key_message)
+            print(
+                f"Received encrypted user message {ciphertext} from"
+                + f" {message.header.sender} that decrypted to {plaintext}.")
+        elif sender in self.active_sessions.keys():
+            olm_message = OlmMessage(ciphertext)
+            plaintext = self.active_sessions[sender].decrypt(olm_message)
             print(
                 f"Received encrypted user message {ciphertext} from"
                 + f" {message.header.sender} that decrypted to {plaintext}.")
@@ -182,6 +187,7 @@ class SessionManager:
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
+        # TODO: Clean up peer session (self.active_sessions.pop())
         peer = message.payload["peer"]
         print(f"Peer {peer} just logged out!")
 

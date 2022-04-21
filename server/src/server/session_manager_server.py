@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from common.keys import PubKeyDigest
+from common.keys import PubKeyDigest, PublicKeysBundle
 from common.messages import (
     ActiveFriends,
     CansMessage,
@@ -85,10 +85,11 @@ class SessionManager:
         await self.__handle_auth_success(public_key_digest)
 
         # Check for active users in the subscription list
-        active_friends = []
+        active_friends: Dict[PubKeyDigest, PublicKeysBundle] = {}
         for friend in subscriptions:
             if friend in self.sessions.keys():
-                active_friends.append(friend)
+                peer_session = self.sessions[friend]
+                active_friends[friend] = (peer_session.identity_key, peer_session.pop_one_time_key())
 
         active_friends_notification = ActiveFriends(
             public_key_digest, active_friends
@@ -235,8 +236,9 @@ class SessionManager:
 
         # Notify all subscribers
         for sub in subscribers:
-            event = LogoutEvent(public_key_digest)
-            await self.__send_event(event, self.sessions[sub])
+            if sub in self.sessions.keys():
+                event = LogoutEvent(public_key_digest)
+                await self.__send_event(event, self.sessions[sub])
 
         self.log.debug(f"Sent logout notification to {len(subscribers)} users")
 
@@ -258,8 +260,13 @@ class SessionManager:
         """Handle session event of type LOGIN."""
         assert isinstance(event.payload, dict)
         payload: Dict[str, Any] = event.payload
+        peer = payload["peer"]
+        peer_key_bundle = (self.sessions[peer].identity_key, self.sessions[peer].pop_one_time_key())
         # Wrap the event in a CANS message and send downstream to the client
-        message = PeerLogin(session.public_key_digest, payload["peer"])
+        message = PeerLogin(
+            receiver=session.public_key_digest,
+            peer=peer,
+            public_keys_bundle=peer_key_bundle)
         await cans_send(message, session.connection)
 
     async def __handle_event_logout(
