@@ -1,6 +1,13 @@
 """Encryption utility."""
+from typing import Dict, Union
 
-from olm import Account, InboundSession, OlmPreKeyMessage, OutboundSession
+from olm import (
+    Account,
+    InboundSession,
+    OlmMessage,
+    OlmPreKeyMessage,
+    OutboundSession,
+)
 
 
 class TripleDiffieHellmanInterface:
@@ -10,7 +17,7 @@ class TripleDiffieHellmanInterface:
         """Initialize interface for Triple Diffie Hellman."""
         self.account = account
 
-    def get_one_time_keys(self, number_of_keys: int) -> dict:
+    def get_one_time_keys(self, number_of_keys: int) -> Dict[str, str]:
         """Get public one time keys."""
         self.account.generate_one_time_keys(number_of_keys)
         one_time_keys = self.account.one_time_keys
@@ -46,7 +53,7 @@ class DoubleRatchetSession:
             account=self.account, message=pre_key_message
         )
 
-    def encrypt(self, plaintext: str) -> str:
+    def encrypt(self, plaintext: str) -> Union[OlmPreKeyMessage, OlmMessage]:
         """Interface for encrypting plaintext for both types of sessions."""
         assert self.session is not None, (
             f"Can't encrypt {plaintext}. "
@@ -56,7 +63,7 @@ class DoubleRatchetSession:
         ciphertext = self.session.encrypt(plaintext=plaintext)
         return ciphertext
 
-    def decrypt(self, ciphertext: str) -> str:
+    def decrypt(self, ciphertext: Union[OlmPreKeyMessage, OlmMessage]) -> str:
         """Interface for decrypting ciphertext for both types of sessions."""
         assert self.session is not None, (
             f"Can't decrypt {ciphertext}. "

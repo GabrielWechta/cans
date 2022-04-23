@@ -29,7 +29,8 @@ class CansMsgId(IntEnum):
     ACTIVE_FRIENDS = 10
     GET_KEY_BUNDLE_REQ = 11
     GET_KEY_BUNDLE_RESP = 12
-    REPLENISH_ONE_TIME_KEYS = 13
+    REPLENISH_ONE_TIME_KEYS_REQ = 13
+    REPLENISH_ONE_TIME_KEYS_RESP = 14
 
 
 class CansMessage:
@@ -211,17 +212,33 @@ class GetKeyBundleResp(CansMessage):
         }
 
 
-class ReplenishOneTimeKeys(CansMessage):
+class ReplenishOneTimeKeysReq(CansMessage):
     """Send replenish one time keys request to the client."""
 
     def __init__(self, receiver: PubKeyDigest, one_time_keys_num: int) -> None:
         """Create a replenish request."""
         super().__init__()
-        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ
         self.header.sender = None
         self.header.receiver = receiver
         self.payload = {
             "one_time_keys_num": one_time_keys_num,
+        }
+
+
+class ReplenishOneTimeKeysResp(CansMessage):
+    """Send replenish one time keys response to the server."""
+
+    # TODO Can this response be used both in:
+    # 1. ReplenishOneTimeKeysReq scenario
+    # 2. PeerLogin scenario?
+    def __init__(self, one_time_keys: Dict[str, str]) -> None:
+        """Create a replenish response."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
+        self.header.receiver = None
+        self.payload = {
+            "one_time_keys": one_time_keys,
         }
 
 
