@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import ssl
+from typing import Dict
 
 import websockets.client as ws
 from olm import Account, OlmMessage, OlmPreKeyMessage
@@ -23,11 +24,16 @@ from .key_manager import KeyManager
 
 
 class ActiveSession(DoubleRatchetSession):
+    """Interface for SessionManager convenience."""
+
     pass
 
 
 class PotentialSession:
+    """Utility mapping friends pub_keys on (id_keys, ot_keys)."""
+
     def __init__(self, identity_key: str, one_time_key: str):
+        """Construct easy way of finding public bundle."""
         self.identity_key = identity_key
         self.one_time_key = one_time_key
 
@@ -49,8 +55,8 @@ class SessionManager:
         self.account = account
         self.tdh_interface = TripleDiffieHellmanInterface(account=self.account)
         self.key_manager = key_manager
-        self.active_sessions = {}
-        self.potential_sessions = {}
+        self.active_sessions: Dict[PubKeyDigest, ActiveSession] = {}
+        self.potential_sessions: Dict[PubKeyDigest, PotentialSession] = {}
 
         # TODO: Implement client-side logging
         self.log = logging.getLogger("cans-logger")
@@ -166,6 +172,7 @@ class SessionManager:
             pre_key_message = OlmPreKeyMessage(ciphertext)
             self.potential_sessions.pop(sender)
             active_session = ActiveSession(account=self.account)
+            pre_key_message = OlmPreKeyMessage(ciphertext)
             active_session.start_inbound_session(pre_key_message)
             self.active_sessions[sender] = active_session
             plaintext = self.active_sessions[sender].decrypt(pre_key_message)
