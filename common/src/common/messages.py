@@ -229,11 +229,8 @@ class ReplenishOneTimeKeysReq(CansMessage):
 class ReplenishOneTimeKeysResp(CansMessage):
     """Send replenish one time keys response to the server."""
 
-    # TODO Can this response be used both in:
-    # 1. ReplenishOneTimeKeysReq scenario
-    # 2. PeerLogin scenario?
     def __init__(self, one_time_keys: Dict[str, str]) -> None:
-        """Create a replenish response."""
+        """Create replenish response."""
         super().__init__()
         self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
         self.header.receiver = None

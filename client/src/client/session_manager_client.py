@@ -82,14 +82,12 @@ class SessionManager:
             CansMsgId.PEER_UNAVAILABLE: self._handle_message_peer_unavailable,
             CansMsgId.PEER_LOGIN: self._handle_message_peer_login,
             CansMsgId.PEER_LOGOUT: self._handle_message_peer_logout,
-        }
-        # TODO Adrian *sanity check*
-        # fmt: off
-        self.request_message_handlers = {
+            # fmt: off
             CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ:
                 self._handle_message_replenish_one_time_keys_req,
+            # fmt: on
         }
-        # fmt: on
+        self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
 
     async def connect(self, url: str, certpath: str) -> None:
         """Connect to the server."""
@@ -131,38 +129,52 @@ class SessionManager:
                     identity_key=identity_key, one_time_key=one_time_key
                 )
 
-            await asyncio.gather(
-                self._handle_upstream(conn), self._handle_downstream(conn)
+            # TODO delete self._dummy_message_generator()
+            await asyncio.gather(  # noqa FKA01
+                self._dummy_message_generator(),
+                self._handle_upstream(conn),
+                self._handle_downstream(conn),
             )
 
-    async def _handle_upstream(self, conn: ws.WebSocketClientProtocol) -> None:
-        """Handle upstream traffic, i.e. client to server."""
-        public_key = self.key_manager.get_own_public_key_digest()
-
+    # TODO delete it
+    async def _dummy_message_generator(self) -> None:
         while True:
+            public_key = self.key_manager.get_own_public_key_digest()
+
             dummy_message = self._user_message_to(self.hardcoded_peer_key)
             plaintext = (
                 f"Hello {self.hardcoded_peer_key}, this is {public_key}"
             )
-            receiver = dummy_message.header.receiver
+            dummy_message.payload = plaintext
 
-            if receiver in self.potential_sessions.keys():
-                # remove entry from potential sessions
-                potential_session = self.potential_sessions.pop(receiver)
-                # transform potential session to active session
-                active_session = potential_session.transform_to_active_session(
-                    account=self.account
-                )
-                self.active_sessions[receiver] = active_session
-
-            if receiver in self.active_sessions.keys():
-                pre_key_message = self.active_sessions[receiver].encrypt(
-                    plaintext
-                )
-                dummy_message.payload = pre_key_message.ciphertext
-
-            await cans_send(dummy_message, conn)
+            await self.upstream_message_queue.put(dummy_message)
             await asyncio.sleep(2)
+
+    async def _handle_upstream(self, conn: ws.WebSocketClientProtocol) -> None:
+        """Handle upstream traffic, i.e. client to server."""
+        while True:
+            message = await self.upstream_message_queue.get()
+            receiver = message.header.receiver
+
+            if receiver is not None:
+                if receiver in self.potential_sessions.keys():
+                    # remove entry from potential sessions
+                    potential_session = self.potential_sessions.pop(receiver)
+                    # transform potential session to active session
+                    active_session = (
+                        potential_session.transform_to_active_session(
+                            account=self.account
+                        )
+                    )
+                    self.active_sessions[receiver] = active_session
+
+                if receiver in self.active_sessions.keys():
+                    olm_message = self.active_sessions[receiver].encrypt(
+                        message.payload
+                    )
+                    message.payload = olm_message.ciphertext
+
+            await cans_send(message, conn)
 
     async def _handle_downstream(
         self, conn: ws.WebSocketClientProtocol
@@ -174,11 +186,6 @@ class SessionManager:
             if message.header.msg_id in self.message_handlers.keys():
                 # Call a registered handler
                 await self.message_handlers[message.header.msg_id](message)
-            elif message.header.msg_id in self.request_message_handlers.keys():
-                # Call a registered request handler
-                await self.request_message_handlers[message.header.msg_id](
-                    message, conn
-                )
             else:
                 print(
                     "Received unexpected message with ID:"
@@ -245,7 +252,7 @@ class SessionManager:
         print(f"Peer {peer} just logged out!")
 
     async def _handle_message_replenish_one_time_keys_req(
-        self, message: CansMessage, conn: ws.WebSocketClientProtocol
+        self, message: CansMessage
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
         one_time_keys_num = message.payload["one_time_keys_num"]
@@ -255,8 +262,7 @@ class SessionManager:
             number_of_keys=one_time_keys_num
         )
         rep_otk_resp = ReplenishOneTimeKeysResp(one_time_keys=one_time_keys)
-        # TODO Adrian *sanity check*
-        await cans_send(rep_otk_resp, conn)
+        await self.upstream_message_queue.put(rep_otk_resp)
 
     def _user_message_to(self, peer: PubKeyDigest) -> UserMessage:
         """Create a user message to a peer."""
