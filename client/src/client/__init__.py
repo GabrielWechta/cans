@@ -10,7 +10,6 @@ from olm import Account
 from common.keys import PubKeyDigest
 
 from .database_manager_client import DatabaseManager
-from .key_manager import KeyManager
 from .models import MessageModel, UserModel
 from .osal import OSAL
 from .session_manager_client import SessionManager
@@ -20,9 +19,7 @@ from .user_interface import UserInterface
 class Client:
     """Frontend application starter."""
 
-    def __init__(
-        self, identity: PubKeyDigest, hardcoded_peer: PubKeyDigest
-    ) -> None:
+    def __init__(self, identity: PubKeyDigest) -> None:
         """Construct the client object."""
         # TODO: Parse environment variables
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -42,7 +39,6 @@ class Client:
         #       be needed here)
 
         self.event_loop = asyncio.get_event_loop()
-        self.key_manager = KeyManager(identity)
         self.db_manager = DatabaseManager()
 
         self.ui = UserInterface(self.event_loop)
@@ -77,22 +73,19 @@ class Client:
         account = Account()
 
         # Session manager is the last needed component
-        # TODO: Perhaps resolve this dependency more cleanly or get rid of it
         self.session_manager = SessionManager(
-            key_manager=self.key_manager,
-            hardcoded_peer=hardcoded_peer,
+            keys=(identity, identity),  # TODO: Add public/private key pair
             account=account,
         )
 
     def run(self) -> None:
         """Run the client application."""
-        # TODO: Run late startup: prompt the user for password etc.
-
         # Connect to the server
         self.event_loop.run_until_complete(
             self.session_manager.connect(
                 url=f"wss://{self.server_hostname}:{self.server_port}",
                 certpath=self.certpath,
+                friends=["cans-echo-service"],
             )
         )
 
