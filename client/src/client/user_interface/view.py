@@ -37,7 +37,7 @@ class View:
         self.on_resize_event = Event()
 
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="none")
+        self.myself = UserModel(username="Alice", id="123", color="green")
 
         # create a header tile -- always on top
         header = HeaderTile(
@@ -297,6 +297,6 @@ if __name__ == "__main__":
         view.add_message(bob, message)
 
     for message in messages_with_eve:
-        view.add_message(bob, message)
+        view.add_message(eve, message)
 
     loop.run_forever()

@@ -460,24 +460,25 @@ class ChatTile(Tile):
         await Tile.render(self, t)
 
         # hardcoded identity
-        myself = UserModel(username="Alice", id="123", color="none")
+        myself = UserModel(username="Alice", id="123", color="green")
 
         # construct message buffer
         buffer = []
         for mes in self._buffer:
 
             message = t.gray(mes.date.strftime("[%H:%M]"))
+            user_color = getattr(t, mes.from_user.color)
             if mes.from_user.username == myself.username:
                 message += (
                     t.gray("[")
-                    + t.green(mes.from_user.username)
+                    + user_color(mes.from_user.username)
                     + t.gray("]> ")
                     + str(mes.body)
                 )
             else:
                 message += (
                     t.gray("[")
-                    + t.red(mes.from_user.username)
+                    + user_color(mes.from_user.username)
                     + t.gray("]> ")
                     + str(mes.body)
                 )

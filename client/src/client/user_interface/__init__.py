@@ -25,10 +25,10 @@ class UserInterface:
         self.view = View(self.term, self.loop)
 
         # start user input handler
-        self.loop.create_task(self.handle_user_input())
+        self.loop.create_task(self._handle_user_input())
 
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="none")
+        self.myself = UserModel(username="Alice", id="123", color="green")
         self.cmds_layout: Mapping[Any, Callable[..., Optional[str]]] = {
             # arrow keys
             self.term.KEY_LEFT:  self.view.layout.cmd_left,
@@ -54,7 +54,7 @@ class UserInterface:
         }  # fmt: skip
         """Mapping for layout changing commands"""
 
-    async def on_new_message_received_str(
+    def on_new_message_received_str(
         self, message: str, user: UserModel
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
@@ -66,14 +66,23 @@ class UserInterface:
         )
         self.view.add_message(user, new_message)
 
-    async def on_new_message_received(
+    def on_new_message_received(
         self, message: MessageModel, user: UserModel
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
         self.view.add_message(user, message)
 
-    async def handle_user_input(self) -> None:
-        """Handle user input asyncrhonusly."""
+    async def _handle_user_input(self) -> None:
+        """Handle user input asynchronously."""
+        # set of focues commands, we use to not re render
+        # everything on focus change
+        focus_cmds = [
+            self.view.layout.cmd_down,
+            self.view.layout.cmd_up,
+            self.view.layout.cmd_left,
+            self.view.layout.cmd_right,
+        ]
+
         # run forever
         while True:
             # get input from the input queue
@@ -85,20 +94,12 @@ class UserInterface:
             inp = inp_tuple[1]
 
             cmd = None
+
             # layout mode, we're working inside the UI so
             # the user input isn't sent anywhere
             if mode == "layout" and inp in self.cmds_layout:
                 cmd = self.cmds_layout[inp]
                 if cmd:
-                    # set of focues commands, we use to not re render
-                    # everything on focus change
-                    focus_cmds = [
-                        self.view.layout.cmd_down,
-                        self.view.layout.cmd_up,
-                        self.view.layout.cmd_left,
-                        self.view.layout.cmd_right,
-                    ]
-
                     # handle tile removal
                     if cmd == self.view.layout.remove:
                         target = self.view.layout.focused
@@ -130,15 +131,11 @@ class UserInterface:
                     )  # type: ignore
                     # some callback to client would be needed
                     # TODO: add callback for client
+
                 elif tile and tile_type == Tile:
                     tile.consume_input(inp, self.term)
                     pass
 
     def say_hello(self) -> None:
-        """Says fucking hello."""
+        """Says f*cking hello."""
         print("hello 2")
-
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    ui = UserInterface(loop)
