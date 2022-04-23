@@ -129,11 +129,7 @@ class UserInterface:
                         tile.chat_with, new_message  # type: ignore
                     )  # type: ignore
                     # some callback to client would be needed
-<<<<<<< HEAD
-
-=======
                     # TODO: add callback for client
->>>>>>> 938a6d3 (Implement UserInterface class)
                 elif tile and tile_type == Tile:
                     tile.consume_input(inp, self.term)
                     pass

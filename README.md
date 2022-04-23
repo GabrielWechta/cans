@@ -66,6 +66,21 @@ cp .env.example .env
 docker-compose up --build
 ```
 
+### Run module tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest client
+pytest server
+pytest common
+```
+
+### Run integration tests
+
+```bash
+./run_tests
+```
+
 <!-- ABOUT THE PROJECT -->
 
 ## About The Project
@@ -87,6 +102,6 @@ docker-compose up --build
 
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
+Distributed under the MIT License. See `LICENSE` for more information.
 
 <p align="right">(<a href="#top">back to top</a>)</p>

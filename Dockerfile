@@ -1,39 +1,53 @@
-FROM python:3.8 AS server_dev
+FROM python:3.8 AS server
 
 WORKDIR /usr/src/app
 
-COPY server/requirements.txt .
+# Copy required modules
+COPY server server
+COPY common common
 
-RUN pip install -r requirements.txt
+# Install the modules
+RUN pip install -e server
+RUN pip install -e common
+
+# Make the log directory
 RUN mkdir log
 
-COPY server .
-COPY common common
-COPY resources/certs/CansCert.pem certs/CansCert.pem
-COPY resources/certs/CansKey.pem certs/CansKey.pem
+# Copy resources
+COPY resources/certs/CansCert.pem resources/certs/CansCert.pem
+COPY resources/certs/CansKey.pem resources/certs/CansKey.pem
+
+CMD ["python", "-u", "-m", "server"]
 
 FROM python:3.8 AS client_dev
 
 WORKDIR /usr/src/app
 
-COPY client/requirements.txt .
+# installing olm
+RUN apt-get update && apt-get install -y \
+        cmake \
+        libolm-dev
 
-RUN pip install -r requirements.txt
+COPY resources/olm /usr/src/app/olm
 
-COPY client .
-COPY common common
-COPY resources/certs/CansCert.pem certs/CansCert.pem
-
-FROM python:3.8 AS server
+# buidling olm
+WORKDIR /usr/src/app/olm
+RUN cmake . -Bbuild
+RUN cmake --build build
+RUN make install
+# buidling python binding for olm
+WORKDIR /usr/src/app/olm/python
+RUN make olm-python3
 
 WORKDIR /usr/src/app
 
-COPY server/requirements.txt .
+# Copy required modules
+COPY client client
+COPY common common
 
-RUN pip install -r requirements.txt
+# Install the modules
+RUN pip install -e client
+RUN pip install -e common
 
-COPY server .
-COPY resources/certs/CansCert.pem certs/CansCert.pem
-COPY resources/certs/CansKey.pem certs/CansKey.pem
-
-CMD ["python", "main"]
+# Copy resources
+COPY resources/certs/CansCert.pem resources/certs/CansCert.pem

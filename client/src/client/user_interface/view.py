@@ -9,12 +9,12 @@ import hashlib
 import signal
 from datetime import datetime
 from threading import Event
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Union
 
 from blessed import Terminal
 
 from ..models import MessageModel, UserModel
-from .tiles import ChatTile, HeaderTile, InputTile
+from .tiles import ChatTile, HeaderTile, InputTile, Tile
 from .tiling_managers import MonadTallLayout
 
 
@@ -132,7 +132,7 @@ class View:
         self.layout.add(chat)
         self.loop.create_task(self.layout.render_all())
 
-    def find_chats(self, chats_with: UserModel) -> Optional[List[UserModel]]:
+    def find_chats(self, chats_with: UserModel) -> List[Tile]:
         """Find chat tiles with a given user."""
         found_tiles = []
 
@@ -150,7 +150,9 @@ class View:
         chats = self.find_chats(chat_with)
         if chats is not None:
             for chat in chats:
-                self.loop.create_task(chat.add_message_to_buffer(message))
+                self.loop.create_task(
+                    chat.add_message_to_buffer(message)  # type: ignore
+                )  # type: ignore
 
     def input_queue(self) -> asyncio.Queue:
         """Return user input queue."""

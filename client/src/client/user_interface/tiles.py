@@ -449,6 +449,7 @@ class ChatTile(Tile):
         await self.add_message_to_buffer(
             MessageModel(
                 from_user=UserModel(username="Alice", id="", color=""),
+                to_user=UserModel(username="Alice", id="", color=""),
                 body=inp,
                 date=datetime.now(),
             )

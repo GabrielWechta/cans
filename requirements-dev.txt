@@ -1,0 +1,4 @@
+-e client
+-e common
+-e server
+pytest==6.2.5
