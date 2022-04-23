@@ -13,8 +13,8 @@ from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
 from .models import MessageModel, UserModel
-from .osal import OSAL
 from .session_manager_client import SessionManager
+from .startup import Startup
 from .user_interface import UserInterface
 
 
@@ -27,19 +27,27 @@ class Client:
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
         self.certpath = os.environ["CANS_SELF_SIGNED_CERT_PATH"]
-        self.osal = OSAL()
-        print(f"HWF: {self.osal.hardware_fingerprint()}")
 
         self._do_logger_config()
         self.log = logging.getLogger("cans-logger")
+        self.startup = Startup()
 
-        # TODO: Try early startup (decryption of keys, database access etc.)?
-        #       Either way a later startup will need to be supported as user
-        #       input may be required (password)
-
-        # TODO: Do application initialization (create directories, keys etc.)
-        #       if the user logs in for the first time (some crude UI will
-        #       be needed here)
+        # Check if necessaery files exist
+        if self.startup.is_first_startup():
+            # TODO implement proper password prompts
+            user_passphrase = "SafeAndSecurePassword2137"
+            self.password = self.startup.get_password(user_passphrase)
+            self.startup.cans_setup()
+            self.pub_key, self.priv_key = self.startup.generate_key_pair(
+                self.password
+            )
+        else:
+            # TODO implement proper password prompts
+            user_passphrase = "SafeAndSecurePassword2137"
+            self.password = self.startup.get_password(user_passphrase)
+            self.pub_key, self.priv_key = self.startup.decrypt_key_pair(
+                self.password
+            )
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()
