@@ -137,5 +137,11 @@ certs/*.csr
 # Ignore the log volume
 log/
 
+# Ignore history
+.history/
+
+# Ignore vscode
+.vscode/
+
 # Quick fix for olm
 !resources/olm/lib

@@ -1,7 +1,9 @@
 """CANS communicator frontend."""
 
 import asyncio
+import hashlib
 import os
+from datetime import datetime
 
 from olm import Account
 
@@ -9,6 +11,7 @@ from common.keys import PubKeyDigest
 
 from .database_manager_client import DatabaseManager
 from .key_manager import KeyManager
+from .models import MessageModel, UserModel
 from .osal import OSAL
 from .session_manager_client import SessionManager
 from .user_interface import UserInterface
@@ -38,12 +41,37 @@ class Client:
         #       if the user logs in for the first time (some crude UI will
         #       be needed here)
 
-        self.ui = UserInterface()
-
         self.event_loop = asyncio.get_event_loop()
         self.key_manager = KeyManager(identity)
         self.db_manager = DatabaseManager()
 
+        self.ui = UserInterface(self.event_loop)
+        bob = UserModel(
+            username="Bob",
+            id=hashlib.md5("aa".encode("utf-8")).hexdigest(),
+            color="pink",
+        )
+
+        system = UserModel(
+            username="System",
+            id=hashlib.md5("system".encode("utf-8")).hexdigest(),
+            color="orange_underline",
+        )
+        # set identity
+        self.myself = UserModel(username="Alice", id="123", color="green")
+
+        self.ui.view.add_chat(bob)
+        self.ui.view.add_chat(bob)
+        self.ui.view.add_chat(bob)
+
+        message = MessageModel(
+            date=datetime.now(),
+            body="test",
+            from_user=system,
+            to_user=self.myself,
+        )
+
+        self.ui.on_new_message_received(message, bob)
         # TODO: During early startup pickled olm.Account should be un-pickled
         #       and passed to TripleDiffieHellmanInterface and SessionManager
         account = Account()
