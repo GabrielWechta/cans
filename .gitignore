@@ -132,7 +132,7 @@ dmypy.json
 .pyre/
 
 # Ignore certificate signing requests
-certs/*.csr
+resources/certs/*.csr
 
 # Ignore the log volume
 log/
