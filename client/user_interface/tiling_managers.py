@@ -228,9 +228,9 @@ class MonadTallLayout:
         )
 
         # if the windows cant render, just kill them
-        for i in range(
-            start=self.max_displayed_windows - len(self.tiles), stop=0, step=1
-        ):
+        for i in range(  # noqa: FKA01
+            self.max_displayed_windows - len(self.tiles), 0, 1  # noqa: FKA01
+        ):  # noqa: FKA01
             try:
                 tile = self.tiles[i]
                 self.tiles.remove(tile)
