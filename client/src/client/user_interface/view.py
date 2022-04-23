@@ -293,10 +293,10 @@ if __name__ == "__main__":
     ]
 
     messages_with_bob.reverse()
-    for i in range(0, len(messages_with_bob)):
-        view.add_message(bob, messages_with_bob[i])
+    for message in messages_with_bob:
+        view.add_message(bob, message)
 
-    for i in range(0, len(messages_with_eve)):
-        view.add_message(eve, messages_with_eve[i])
+    for message in messages_with_eve:
+        view.add_message(bob, message)
 
     loop.run_forever()

@@ -1,7 +1,6 @@
 """TileList class."""
 from builtins import slice
-from collections.abc import Iterator
-from typing import List, Optional, Union, overload
+from typing import Iterator, List, Optional, Union, overload
 
 from .tiles import Tile
 
