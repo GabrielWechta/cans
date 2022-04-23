@@ -54,11 +54,12 @@ class CansMessage:
 class UserMessage(CansMessage):
     """User message."""
 
-    def __init__(self, receiver: PubKeyDigest) -> None:
+    def __init__(self, receiver: PubKeyDigest, payload: str) -> None:
         """Create a CANS user message to a peer."""
         super().__init__()
         self.header.msg_id = CansMsgId.USER_MESSAGE
         self.header.receiver = receiver
+        self.payload = payload
 
 
 class PeerUnavailable(CansMessage):

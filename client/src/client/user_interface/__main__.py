@@ -4,16 +4,21 @@ import hashlib
 
 from blessed import Terminal
 
-from ..models import UserModel
+from ..models import MessageModel, UserModel
 from ..user_interface import UserInterface
 
 # from .view import View
 
 
+async def upstream_sink(message_model: MessageModel) -> None:
+    """Drop outgoing messages."""
+    assert message_model
+
+
 term = Terminal()
 loop = asyncio.get_event_loop()
 
-ui = UserInterface(loop)
+ui = UserInterface(loop, upstream_sink)
 
 eve = UserModel(
     username="Eve",

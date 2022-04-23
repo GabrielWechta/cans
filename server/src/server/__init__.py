@@ -44,8 +44,8 @@ class Server:
 
         # Create a rotating file handler
         handler = logging.handlers.RotatingFileHandler(
-            filename=os.environ["CANS_LOGFILE_PATH"],
-            maxBytes=int(os.environ["CANS_LOGFILE_CAPACITY_KB"]) * 1024,
+            filename=os.environ["CANS_SERVER_LOGFILE_PATH"],
+            maxBytes=int(os.environ["CANS_SERVER_LOGFILE_CAPACITY_KB"]) * 1024,
         )
 
         # Associate the formatter with the handler...

@@ -100,6 +100,12 @@ class SessionManager:
         """Wait for an incoming message."""
         return await self.downstream_message_queue.get()
 
+    def user_message_to(self, peer: PubKeyDigest, payload: str) -> UserMessage:
+        """Create a user message to a peer."""
+        message = UserMessage(peer, payload)
+        message.header.sender = self.identity
+        return message
+
     async def _run_server_handshake(
         self, conn: ws.WebSocketClientProtocol, friends: List[PubKeyDigest]
     ) -> None:
@@ -217,12 +223,6 @@ class SessionManager:
         )
         rep_otk_resp = ReplenishOneTimeKeysResp(one_time_keys=one_time_keys)
         await self.upstream_message_queue.put(rep_otk_resp)
-
-    def _user_message_to(self, peer: PubKeyDigest) -> UserMessage:
-        """Create a user message to a peer."""
-        message = UserMessage(peer)
-        message.header.sender = self.identity
-        return message
 
     def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
         """Transform potential session into an active outbound session."""

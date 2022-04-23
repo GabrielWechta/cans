@@ -6,6 +6,7 @@ Divides terminal into independent windows
 import asyncio
 import concurrent
 import hashlib
+import logging
 import signal
 from datetime import datetime
 from threading import Event
@@ -33,6 +34,8 @@ class View:
         """Instantiate a view."""
         self.term = Terminal()
         self.loop = loop
+
+        self.log = logging.getLogger("cans-logger")
 
         self.on_resize_event = Event()
 
@@ -148,11 +151,17 @@ class View:
     def add_message(self, chat_with: UserModel, message: MessageModel) -> None:
         """Add a message to buffers of chat tiles with given user."""
         chats = self.find_chats(chat_with)
-        if chats is not None:
+        if chats:
             for chat in chats:
                 self.loop.create_task(
                     chat.add_message_to_buffer(message)  # type: ignore
                 )  # type: ignore
+        else:
+            self.log.error(
+                f"Tried adding message {message.body}"
+                + f" to a non-existing chat with {chat_with.username}"
+                + f" ({chat_with.id})"
+            )
 
     def input_queue(self) -> asyncio.Queue:
         """Return user input queue."""

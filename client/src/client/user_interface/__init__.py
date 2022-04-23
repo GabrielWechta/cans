@@ -14,12 +14,17 @@ class UserInterface:
     """CANS application UI."""
 
     def __init__(
-        self, loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop]
+        self,
+        loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
+        upstream_callback: Callable,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
         self.term = Terminal()
         self.loop = loop
+
+        # Store the client callback
+        self.upstream_callback = upstream_callback
 
         # Instantiate a view
         self.view = View(self.term, self.loop)
@@ -129,8 +134,8 @@ class UserInterface:
                     self.view.add_message(
                         tile.chat_with, new_message  # type: ignore
                     )  # type: ignore
-                    # some callback to client would be needed
-                    # TODO: add callback for client
+                    # pass the message to the client core
+                    await self.upstream_callback(new_message)
 
                 elif tile and tile_type == Tile:
                     tile.consume_input(inp, self.term)
