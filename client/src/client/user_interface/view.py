@@ -187,12 +187,14 @@ if __name__ == "__main__":
     messages_with_bob = [
         MessageModel(
             from_user=view.myself,
+            to_user=bob,
             body="don't know... let's try:",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
             ),
         ),
         MessageModel(
+            to_user=view.myself,
             from_user=bob,
             body=f"Okay that's { term.lightgreen_bold('cool') }, "
             "but do we have markdown support?",
@@ -202,6 +204,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=view.myself,
+            to_user=bob,
             body=term.blue_underline(
                 "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
             ),
@@ -211,6 +214,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=view.myself,
+            to_user=bob,
             body="Observe",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -218,6 +222,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=bob,
+            to_user=view.myself,
             body="No way dude",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -225,6 +230,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=view.myself,
+            to_user=bob,
             body="You know we can post links here?",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -232,6 +238,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=bob,
+            to_user=view.myself,
             body="What do you want",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -239,6 +246,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=view.myself,
+            to_user=bob,
             body="Hi",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -246,6 +254,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=bob,
+            to_user=view.myself,
             body="Hello",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -256,6 +265,7 @@ if __name__ == "__main__":
     messages_with_eve = [
         MessageModel(
             from_user=view.myself,
+            to_user=eve,
             body="don't know... let's try:",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -263,6 +273,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=eve,
+            to_user=view.myself,
             body="hello there",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
@@ -270,6 +281,7 @@ if __name__ == "__main__":
         ),
         MessageModel(
             from_user=view.myself,
+            to_user=eve,
             body="heya",
             date=datetime(
                 year=2022, month=3, day=21, hour=11, minute=36, second=15
