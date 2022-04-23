@@ -3,12 +3,12 @@
 import asyncio
 import logging
 import ssl
-from typing import Dict
+from typing import Dict, List
 
 import websockets.client as ws
 from olm import Account, OlmMessage, OlmPreKeyMessage
 
-from common.keys import PubKeyDigest
+from common.keys import KeyPair, PubKeyDigest, digest_key
 from common.messages import (
     ActiveFriends,
     CansMessage,
@@ -21,7 +21,6 @@ from common.messages import (
 )
 
 from .e2e_encryption import DoubleRatchetSession, TripleDiffieHellmanInterface
-from .key_manager import KeyManager
 
 
 class ActiveSession(DoubleRatchetSession):
@@ -38,18 +37,6 @@ class PotentialSession:
         self.identity_key = identity_key
         self.one_time_key = one_time_key
 
-    def transform_to_active_session(self, account: Account) -> ActiveSession:
-        """Hide logic of transforming potential session to active session."""
-        identity_key, one_time_key = (
-            self.identity_key,
-            self.one_time_key,
-        )
-        active_session = ActiveSession(account=account)
-        active_session.start_outbound_session(
-            peer_id_key=identity_key, peer_one_time_key=one_time_key
-        )
-        return active_session
-
 
 class SessionManager:
     """Session manager.
@@ -60,22 +47,20 @@ class SessionManager:
 
     def __init__(
         self,
-        key_manager: KeyManager,
-        hardcoded_peer: PubKeyDigest,
+        keys: KeyPair,
         account: Account,
     ) -> None:
         """Construct a session manager instance."""
         self.account = account
         self.tdh_interface = TripleDiffieHellmanInterface(account=self.account)
-        self.key_manager = key_manager
         self.active_sessions: Dict[PubKeyDigest, ActiveSession] = {}
         self.potential_sessions: Dict[PubKeyDigest, PotentialSession] = {}
 
+        self.public_key, self.private_key = keys
+        self.identity = digest_key(keys[0])
+
         # TODO: Implement client-side logging
         self.log = logging.getLogger("cans-logger")
-
-        # TODO: Remove after alpha presentation
-        self.hardcoded_peer_key = hardcoded_peer
 
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self._handle_message_user,
@@ -88,8 +73,11 @@ class SessionManager:
             # fmt: on
         }
         self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
+        self.downstream_message_queue: asyncio.Queue = asyncio.Queue()
 
-    async def connect(self, url: str, certpath: str) -> None:
+    async def connect(
+        self, url: str, certpath: str, friends: List[PubKeyDigest]
+    ) -> None:
         """Connect to the server."""
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         # Trust the self-signed certificate and ignore hostname
@@ -98,57 +86,47 @@ class SessionManager:
         ssl_context.check_hostname = False
 
         async with ws.connect(url, ssl=ssl_context) as conn:
-            public_key = self.key_manager.get_own_public_key_digest()
-
-            if "Alice" in public_key:
-                # Test peer unavailable and login notifications
-                print("Alice lagging behind a bit...")
-                await asyncio.sleep(3)
-
-            # Say hello to the server
-            identity_key = self.account.identity_keys["curve25519"]
-            one_time_keys = self.tdh_interface.get_one_time_keys(3)
-            hello = ServerHello(
-                public_key=public_key,
-                subscriptions=[self.hardcoded_peer_key],
-                identity_key=identity_key,
-                one_time_keys=one_time_keys,
-            )
-
-            await cans_send(hello, conn)
-
-            # For sure this message is ActiveFriends.
-            active_friends_message: ActiveFriends = await cans_recv(conn)
-
-            for (
-                pub_key_digest,
-                public_key_bundle,
-            ) in active_friends_message.payload["friends"].items():
-                identity_key, one_time_key = public_key_bundle
-                self.potential_sessions[pub_key_digest] = PotentialSession(
-                    identity_key=identity_key, one_time_key=one_time_key
-                )
-
-            # TODO delete self._dummy_message_generator()
-            await asyncio.gather(  # noqa FKA01
-                self._dummy_message_generator(),
+            await self._run_server_handshake(conn, friends)
+            await asyncio.gather(
                 self._handle_upstream(conn),
                 self._handle_downstream(conn),
             )
 
-    # TODO delete it
-    async def _dummy_message_generator(self) -> None:
-        while True:
-            public_key = self.key_manager.get_own_public_key_digest()
+    async def send_message(self, message: CansMessage) -> None:
+        """Send an outgoing message."""
+        await self.upstream_message_queue.put(message)
 
-            dummy_message = self._user_message_to(self.hardcoded_peer_key)
-            plaintext = (
-                f"Hello {self.hardcoded_peer_key}, this is {public_key}"
+    async def receive_message(self) -> CansMessage:
+        """Wait for an incoming message."""
+        return await self.downstream_message_queue.get()
+
+    async def _run_server_handshake(
+        self, conn: ws.WebSocketClientProtocol, friends: List[PubKeyDigest]
+    ) -> None:
+        """Shake hands with the server."""
+        # Send server hello
+        identity_key = self.account.identity_keys["curve25519"]
+        one_time_keys = self.tdh_interface.get_one_time_keys(3)
+        hello = ServerHello(
+            public_key=self.public_key,
+            subscriptions=friends,
+            identity_key=identity_key,
+            one_time_keys=one_time_keys,
+        )
+        await cans_send(hello, conn)
+
+        # Receive the active friends list
+        active_friends_message: ActiveFriends = await cans_recv(conn)
+
+        # Create potential sessions with active friends
+        for (
+            pub_key_digest,
+            public_key_bundle,
+        ) in active_friends_message.payload["friends"].items():
+            identity_key, one_time_key = public_key_bundle
+            self.potential_sessions[pub_key_digest] = PotentialSession(
+                identity_key=identity_key, one_time_key=one_time_key
             )
-            dummy_message.payload = plaintext
-
-            await self.upstream_message_queue.put(dummy_message)
-            await asyncio.sleep(2)
 
     async def _handle_upstream(self, conn: ws.WebSocketClientProtocol) -> None:
         """Handle upstream traffic, i.e. client to server."""
@@ -156,23 +134,14 @@ class SessionManager:
             message = await self.upstream_message_queue.get()
             receiver = message.header.receiver
 
+            # Currently receiver being None means the message should be
+            # terminated by the server
             if receiver is not None:
                 if receiver in self.potential_sessions.keys():
-                    # remove entry from potential sessions
-                    potential_session = self.potential_sessions.pop(receiver)
-                    # transform potential session to active session
-                    active_session = (
-                        potential_session.transform_to_active_session(
-                            account=self.account
-                        )
-                    )
-                    self.active_sessions[receiver] = active_session
+                    self._activate_outbound_session(receiver)
 
                 if receiver in self.active_sessions.keys():
-                    olm_message = self.active_sessions[receiver].encrypt(
-                        message.payload
-                    )
-                    message.payload = olm_message.ciphertext
+                    message = self._encrypt_user_payload(message)
 
             await cans_send(message, conn)
 
@@ -187,7 +156,7 @@ class SessionManager:
                 # Call a registered handler
                 await self.message_handlers[message.header.msg_id](message)
             else:
-                print(
+                self.log.warning(
                     "Received unexpected message with ID:"
                     + f"{message.header.msg_id}"
                 )
@@ -195,29 +164,14 @@ class SessionManager:
     async def _handle_message_user(self, message: CansMessage) -> None:
         """Handle message type USER_MESSAGE."""
         sender = message.header.sender
-        ciphertext = message.payload
 
-        if sender in self.potential_sessions.keys():
-            pre_key_message = OlmPreKeyMessage(ciphertext)
-            self.potential_sessions.pop(sender)
-            active_session = ActiveSession(account=self.account)
-            active_session.start_inbound_session(pre_key_message)
-            self.active_sessions[sender] = active_session
-            plaintext = self.active_sessions[sender].decrypt(pre_key_message)
-            print(
-                f"Received encrypted user message {ciphertext} from"
-                + f" {message.header.sender} that decrypted to {plaintext}."
-            )
-        elif sender in self.active_sessions.keys():
-            olm_message = OlmMessage(ciphertext)
-            plaintext = self.active_sessions[sender].decrypt(olm_message)
-            print(
-                f"Received encrypted user message {ciphertext} from"
-                + f" {message.header.sender} that decrypted to {plaintext}."
-            )
+        if sender in self.active_sessions.keys():
+            message = self._decrypt_user_payload(message)
+            await self.downstream_message_queue.put(message)
         else:
-            # TODO-UI implement behaviour of new user message
-            print("User message from the other side of the moon.")
+            self._activate_inbound_session(message)
+            message = self._decrypt_user_payload_prekey(message)
+            await self.downstream_message_queue.put(message)
 
     async def _handle_message_peer_unavailable(
         self, message: CansMessage
@@ -226,7 +180,7 @@ class SessionManager:
         peer = message.payload["peer"]
 
         # TODO-UI implement behaviour of peer unavailable
-        print(f"Peer {peer} unavailable!")
+        self.log.warning(f"Peer {peer} unavailable!")
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
@@ -237,7 +191,7 @@ class SessionManager:
         )
 
         # TODO-UI implement behaviour of user login
-        print(f"Peer {peer} just logged in!")
+        self.log.info(f"Peer {peer} just logged in!")
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
@@ -249,7 +203,7 @@ class SessionManager:
             self.active_sessions.pop(peer)
 
         # TODO-UI implement behaviour of user logout
-        print(f"Peer {peer} just logged out!")
+        self.log.info(f"Peer {peer} just logged out!")
 
     async def _handle_message_replenish_one_time_keys_req(
         self, message: CansMessage
@@ -267,5 +221,56 @@ class SessionManager:
     def _user_message_to(self, peer: PubKeyDigest) -> UserMessage:
         """Create a user message to a peer."""
         message = UserMessage(peer)
-        message.header.sender = self.key_manager.get_own_public_key_digest()
+        message.header.sender = self.identity
+        return message
+
+    def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
+        """Transform potential session into an active outbound session."""
+        # Remove entry from potential sessions
+        potential_session = self.potential_sessions.pop(peer)
+        # Transform potential session to active session
+        active_session = ActiveSession(account=self.account)
+        active_session.start_outbound_session(
+            peer_id_key=potential_session.identity_key,
+            peer_one_time_key=potential_session.one_time_key,
+        )
+        # Store new active session
+        self.active_sessions[peer] = active_session
+
+    def _activate_inbound_session(self, message: CansMessage) -> None:
+        """Activate an inbound session based on a received prekey message."""
+        peer = message.header.sender
+        prekey_message = OlmPreKeyMessage(message.payload)
+        # Remove peer from potential sessions if present
+        if peer in self.potential_sessions:
+            self.potential_sessions.pop(peer)
+        # Activate a new session
+        active_session = ActiveSession(account=self.account)
+        active_session.start_inbound_session(prekey_message)
+        # Store new active session
+        self.active_sessions[peer] = active_session
+
+    def _encrypt_user_payload(self, message: CansMessage) -> CansMessage:
+        """Encrypt the payload of a user message."""
+        olm_message = self.active_sessions[message.header.receiver].encrypt(
+            message.payload
+        )
+        message.payload = olm_message.ciphertext
+        return message
+
+    def _decrypt_user_payload(self, message: CansMessage) -> CansMessage:
+        """Decrypt the payload of a user message."""
+        olm_message = OlmMessage(message.payload)
+        message.payload = self.active_sessions[message.header.sender].decrypt(
+            olm_message
+        )
+        return message
+
+    def _decrypt_user_payload_prekey(
+        self, message: CansMessage
+    ) -> CansMessage:
+        """Decrypt user message wrapped in a prekey olm message."""
+        prekey_message = OlmPreKeyMessage(message.payload)
+        session = self.active_sessions[message.header.sender]
+        message.payload = session.decrypt(prekey_message)
         return message
