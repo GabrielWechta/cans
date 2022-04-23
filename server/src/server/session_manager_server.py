@@ -7,11 +7,12 @@ from typing import Any, Dict, List
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from common.keys import PubKeyDigest
+from common.keys import PubKeyDigest, PublicKeysBundle
 from common.messages import (
     ActiveFriends,
     CansMessage,
     CansMsgId,
+    GetKeyBundleResp,
     PeerLogin,
     PeerLogout,
     PeerUnavailable,
@@ -58,6 +59,8 @@ class SessionManager:
         conn: WebSocketServerProtocol,
         public_key_digest: PubKeyDigest,
         subscriptions: List[PubKeyDigest],
+        identity_key: str,
+        one_time_keys: Dict[str, str],
     ) -> None:
         """Handle an authenticated user."""
         # Save the session to have consistent state when
@@ -66,6 +69,8 @@ class SessionManager:
             conn=conn,
             public_key_digest=public_key_digest,
             subscriptions=subscriptions,
+            identity_key=identity_key,
+            one_time_keys=one_time_keys,
         )
         self.sessions[public_key_digest] = session
 
@@ -80,10 +85,14 @@ class SessionManager:
         await self.__handle_auth_success(public_key_digest)
 
         # Check for active users in the subscription list
-        active_friends = []
+        active_friends: Dict[PubKeyDigest, PublicKeysBundle] = {}
         for friend in subscriptions:
             if friend in self.sessions.keys():
-                active_friends.append(friend)
+                peer_session = self.sessions[friend]
+                active_friends[friend] = (
+                    peer_session.identity_key,
+                    peer_session.pop_one_time_key(),
+                )
 
         active_friends_notification = ActiveFriends(
             public_key_digest, active_friends
@@ -121,8 +130,9 @@ class SessionManager:
 
         # Notify all subscribers
         for sub in subscribers:
-            event = LoginEvent(public_key_digest)
-            await self.__send_event(event, self.sessions[sub])
+            if sub in self.sessions.keys():
+                event = LoginEvent(public_key_digest)
+                await self.__send_event(event, self.sessions[sub])
 
         self.log.debug(f"Sent login notification to {len(subscribers)} users")
 
@@ -136,6 +146,7 @@ class SessionManager:
         """Handle upstream traffic, i.e. client to server."""
         while True:
             message = await cans_recv(session.connection)
+
             if self.__upstream_message_valid(message, session):
                 sender = message.header.sender
                 receiver = message.header.receiver
@@ -161,9 +172,27 @@ class SessionManager:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle a control message from the user."""
-        # TODO: Add handling of control messages or remove if redundant
-        assert message
-        assert session
+        if message.header.msg_id == CansMsgId.GET_KEY_BUNDLE_REQ:
+            # Handle key bundle request
+            peer = message.payload["peer"]
+            if peer in self.sessions.keys():
+                # Create the response
+                response = GetKeyBundleResp(
+                    receiver=message.header.sender,
+                    identity_key=self.sessions[peer].identity_key,
+                    one_time_key=self.sessions[peer].pop_one_time_key(),
+                )
+                # Send the response back to client
+                await self.__route_message(response)
+
+            else:
+                self.log.error(f"Requested key bundle for offline user {peer}")
+
+        else:
+            self.log.error(
+                "Received unsupported control message:"
+                + f" {message.header.msg_id}"
+            )
 
     async def __handle_downstream(self, session: ClientSession) -> None:
         """Handle downstream traffic, i.e. server to client."""
@@ -227,8 +256,9 @@ class SessionManager:
 
         # Notify all subscribers
         for sub in subscribers:
-            event = LogoutEvent(public_key_digest)
-            await self.__send_event(event, self.sessions[sub])
+            if sub in self.sessions.keys():
+                event = LogoutEvent(public_key_digest)
+                await self.__send_event(event, self.sessions[sub])
 
         self.log.debug(f"Sent logout notification to {len(subscribers)} users")
 
@@ -250,8 +280,17 @@ class SessionManager:
         """Handle session event of type LOGIN."""
         assert isinstance(event.payload, dict)
         payload: Dict[str, Any] = event.payload
+        peer = payload["peer"]
+        peer_key_bundle = (
+            self.sessions[peer].identity_key,
+            self.sessions[peer].pop_one_time_key(),
+        )
         # Wrap the event in a CANS message and send downstream to the client
-        message = PeerLogin(session.public_key_digest, payload["peer"])
+        message = PeerLogin(
+            receiver=session.public_key_digest,
+            peer=peer,
+            public_keys_bundle=peer_key_bundle,
+        )
         await cans_send(message, session.connection)
 
     async def __handle_event_logout(

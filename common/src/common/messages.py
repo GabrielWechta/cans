@@ -2,12 +2,12 @@
 
 from enum import IntEnum, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
 
-from .keys import PubKey, PubKeyDigest
+from .keys import PubKey, PubKeyDigest, PublicKeysBundle
 
 CansSerial = str
 
@@ -27,6 +27,10 @@ class CansMsgId(IntEnum):
     SHARE_CONTACTS = 8
     PEER_UNAVAILABLE = 9  # TODO: Remove this
     ACTIVE_FRIENDS = 10
+    GET_KEY_BUNDLE_REQ = 11
+    GET_KEY_BUNDLE_RESP = 12
+    REPLENISH_ONE_TIME_KEYS_REQ = 13
+    REPLENISH_ONE_TIME_KEYS_RESP = 14
 
 
 class CansMessage:
@@ -76,7 +80,11 @@ class ServerHello(CansMessage):
     """
 
     def __init__(
-        self, public_key: PubKey, subscriptions: List[PubKeyDigest]
+        self,
+        public_key: PubKey,
+        subscriptions: List[PubKeyDigest],
+        identity_key: str,
+        one_time_keys: Dict[str, str],
     ) -> None:
         """Create a dummy handshake message."""
         super().__init__()
@@ -85,18 +93,25 @@ class ServerHello(CansMessage):
         self.payload = {
             "public_key": public_key,
             "subscriptions": subscriptions,
+            "identity_key": identity_key,
+            "one_time_keys": one_time_keys,
         }
 
 
 class PeerLogin(CansMessage):
     """Peer login notification."""
 
-    def __init__(self, receiver: PubKeyDigest, peer: PubKeyDigest) -> None:
+    def __init__(
+        self,
+        receiver: PubKeyDigest,
+        peer: PubKeyDigest,
+        public_keys_bundle: PublicKeysBundle,
+    ) -> None:
         """Create a peer login notification."""
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_LOGIN
         self.header.receiver = receiver
-        self.payload = {"peer": peer}
+        self.payload = {"peer": peer, "public_keys_bundle": public_keys_bundle}
 
 
 class PeerLogout(CansMessage):
@@ -158,13 +173,70 @@ class ActiveFriends(CansMessage):
     """Notify the client during handshake who's online."""
 
     def __init__(
-        self, receiver: PubKeyDigest, active_friends: List[PubKeyDigest]
+        self,
+        receiver: PubKeyDigest,
+        active_friends: Dict[PubKeyDigest, PublicKeysBundle],
     ) -> None:
         """Create an active friends notification."""
         super().__init__()
         self.header.msg_id = CansMsgId.ACTIVE_FRIENDS
         self.header.receiver = receiver
         self.payload = {"friends": active_friends}
+
+
+class GetKeyBundleReq(CansMessage):
+    """Request peer's double-ratched key bundle."""
+
+    def __init__(self, peer: PubKeyDigest) -> None:
+        """Create a key bundle request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_REQ
+        self.header.receiver = None
+        self.payload = {"peer": peer}
+
+
+class GetKeyBundleResp(CansMessage):
+    """Send double-ratched key bundle back to the requestor."""
+
+    def __init__(
+        self, receiver: PubKeyDigest, identity_key: str, one_time_key: str
+    ) -> None:
+        """Create a key bundle response."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_RESP
+        self.header.sender = None
+        self.header.receiver = receiver
+        self.payload = {
+            "identity_key": identity_key,
+            "one_time_key": one_time_key,
+        }
+
+
+class ReplenishOneTimeKeysReq(CansMessage):
+    """Send replenish one time keys request to the client."""
+
+    def __init__(self, receiver: PubKeyDigest, one_time_keys_num: int) -> None:
+        """Create a replenish request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ
+        self.header.sender = None
+        self.header.receiver = receiver
+        self.payload = {
+            "one_time_keys_num": one_time_keys_num,
+        }
+
+
+class ReplenishOneTimeKeysResp(CansMessage):
+    """Send replenish one time keys response to the server."""
+
+    def __init__(self, one_time_keys: Dict[str, str]) -> None:
+        """Create replenish response."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
+        self.header.receiver = None
+        self.payload = {
+            "one_time_keys": one_time_keys,
+        }
 
 
 class CansMessageException(Exception):
