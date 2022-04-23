@@ -260,10 +260,8 @@ class InputTile(Tile):
                 x_pos = prompt_location[0] + term.length(inp)
                 y_pos = prompt_location[1]
 
-                # run(wait_for(future, 0))
                 # paste handling, use the first character to check
                 # command type and add rest as additional input
-                # print(term.move_xy(x_pos, y_pos), end="")
                 val = term.inkey()
 
                 if self.mode == "" and self.input_filter(val):
@@ -317,7 +315,7 @@ class InputTile(Tile):
                             self.display_prompt(inp, term), loop
                         )
                 # if layout mode
-                elif self.mode == "layout":
+                if self.mode == "layout":
                     if val.code == term.KEY_ENTER:
                         self.mode = ""
                     else:
