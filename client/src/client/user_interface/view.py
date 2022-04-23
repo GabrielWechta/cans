@@ -43,6 +43,7 @@ class View:
         header = HeaderTile(
             name="Title bar",
             title=term.red_underline("cans") + " secure messenger",
+            right_title=term.green_underline("α") + "-version",
             width=term.width,
             height=2,
             x=0,
@@ -112,10 +113,10 @@ class View:
             x=0,
             y=self.header.height,
         )
-        self.header.width = term.width
+        self.header.width = self.term.width
 
         self.loop.create_task(self.layout.render_all())
-        self.loop.create_task(self.header.render(term))
+        self.loop.create_task(self.header.render(self.term))
         self.on_resize_event.set()
 
     def add_chat(self, chat_with: UserModel) -> None:

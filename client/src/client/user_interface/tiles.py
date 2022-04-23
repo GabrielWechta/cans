@@ -189,6 +189,22 @@ height:         {self.height}
 class HeaderTile(Tile):
     """Header Tile."""
 
+    def __init__(
+        self, right_title: str = "", *args: Any, **kwargs: Any
+    ) -> None:
+        """Init input Tile."""
+        self.right_title = right_title
+        Tile.__init__(self, *args, **kwargs)
+
+    async def render_titlebar(self, t: Terminal) -> None:
+        """Render title bar of a HeaderTile."""
+        title_left = self.title
+        title_right = t.rjust(self.right_title, t.width - t.length(title_left))
+
+        self.title = title_left + title_right
+        await Tile.render_titlebar(self, t)
+        self.title = title_left
+
     async def render(self, t: Terminal) -> None:
         """Render the Tile."""
         await self.render_margins(t)
