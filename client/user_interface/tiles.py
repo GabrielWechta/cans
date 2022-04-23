@@ -4,7 +4,8 @@ import math
 import os
 from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
 from datetime import datetime
-from typing import Any, List
+from threading import Event
+from typing import Any, List, Tuple
 
 from blessed import Terminal, keyboard
 
@@ -79,10 +80,10 @@ class Tile:
         self._height = height
         self.real_size()
 
-    async def consume_input(self, inp: str) -> None:
+    async def consume_input(self, inp: str, t: Terminal) -> None:
         """Consume some input in some way."""
         self.body = inp
-        await self.render()
+        await self.render(t)
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins etc."""
@@ -99,15 +100,13 @@ class Tile:
     def truncate(self, text: str, t: Terminal) -> str:
         """Truncate text to fit into the rendering box."""
         out = text
-        if len(text) > self.real_width:
+        if t.length(text) > self.real_width:
             out = t.truncate(text, self.real_width - 1)
-            out += t.on_white(">")
+            out += t.on_red(">")
         return out
 
-    async def render(self) -> None:
+    async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        t = Terminal()
-
         # render title bar
         await self.render_titlebar(t)
 
@@ -134,14 +133,13 @@ class Tile:
     async def render_titlebar(self, t: Terminal) -> None:
         """Render title bar of a Tile."""
         with t.hidden_cursor(), t.location(
-            self.x + int("l" in self.margins), self.y
+            self.x + int("l" in self.margins),
+            self.y + int("u" in self.margins),
         ):
-            if self.title != "":
-                out = self.title + " " * (self._width - len(self.title) - 1)
-                print(self.truncate(out, t), end="")
-            else:
-                out = self.name + " " * (self._width - len(self.name) - 1)
-                print(self.truncate(out, t), end="")
+            title = self.title if self.title != "" else self.name
+            out = self.truncate(title, t)
+            out = t.ljust(out, self.real_width)
+            print(out, end="")
 
     async def render_margins(self, t: Terminal) -> None:
         """Render margins of a tile."""
@@ -191,9 +189,8 @@ height:         {self.height}
 class HeaderTile(Tile):
     """Header Tile."""
 
-    async def render(self) -> None:
+    async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        t = Terminal()
         await self.render_margins(t)
         await self.render_titlebar(t)
 
@@ -214,7 +211,7 @@ class InputTile(Tile):
         """Calculate real size, excluding margins etc."""
         width = (
             self._width - int("l" in self.margins) - int("r" in self.margins)
-        ) - len(self.prompt)
+        ) - Terminal().length(self.prompt)
         height = (
             self._height - int("u" in self.margins) - int("d" in self.margins)
         ) - 1  # for titlebar
@@ -240,34 +237,53 @@ class InputTile(Tile):
         # it's always on the botton of the screen
         self.y = t.height - self.height
 
-        await self.render()
+        await self.clear_input(t)
 
-    def input(self, term: Terminal, loop: BaseEventLoop) -> None:
+        await self.render(t)
+
+    def input(
+        self, term: Terminal, loop: BaseEventLoop, on_resize_event: Event
+    ) -> None:
         """
         Input function, REALLY BAD.
 
         TODO: think about better implementation.
         """
         inp = ""
-
+        prompt_location = self.prompt_location()
+        print(term.move_xy(prompt_location[0], prompt_location[1]), end="")
         # basically run forever
         while True:
-            # we have to somehow now that terminal has resized from this thread
-            # as the signals only work in main,
-            # this is just a workaround
-            if term.width != self.width or self.y != term.height - self.height:
-                run_coroutine_threadsafe(self.on_resize(term), loop)
-
             # set cursor position
             with term.raw():
+                prompt_location = self.prompt_location()
+                x_pos = prompt_location[0] + term.length(inp)
+                y_pos = prompt_location[1]
+
+                # run(wait_for(future, 0))
                 # paste handling, use the first character to check
                 # command type and add rest as additional input
+                # print(term.move_xy(x_pos, y_pos), end="")
                 val = term.inkey()
+
+                if self.mode == "" and self.input_filter(val):
+                    x_pos += 1
+
                 next = term.inkey(timeout=0.001)
                 add_input = ""
                 while next and self.input_filter(next):
                     add_input += next
                     next = term.inkey(timeout=0.001)
+
+                print(
+                    term.move_xy(x_pos + term.length(add_input), y_pos), end=""
+                )
+                # we have to somehow now that terminal
+                # has resized from this thread
+                # as the signals only work in main,
+                if on_resize_event.is_set():
+                    on_resize_event.clear()
+                    run_coroutine_threadsafe(self.on_resize(term), loop)
 
                 # workaround to have a working ctrl+c in raw mode
                 # and with threads
@@ -277,24 +293,23 @@ class InputTile(Tile):
                 if self.mode == "":
                     if val.code == term.KEY_ESCAPE:
                         self.mode = "layout"
-                        run_coroutine_threadsafe(self.clear_input(term), loop)
                     else:
                         # if enter was pressed, return input
-                        if val.code == term.KEY_ENTER:
+                        if val.code == term.KEY_ENTER and inp != "":
                             run_coroutine_threadsafe(
                                 self.input_queue.put((self.mode, inp)), loop
                             )
-                            run_coroutine_threadsafe(
-                                self.clear_input(term), loop
+                            print(
+                                term.move_xy(
+                                    prompt_location[0], prompt_location[1]
+                                ),
+                                end="",
                             )
                             inp = ""
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
                         ):
-                            run_coroutine_threadsafe(
-                                self.clear_input(term), loop
-                            )
                             inp = inp[:-1]
                         elif self.input_filter(val):
                             inp += val + add_input
@@ -305,53 +320,58 @@ class InputTile(Tile):
                 elif self.mode == "layout":
                     if val.code == term.KEY_ENTER:
                         self.mode = ""
-                        run_coroutine_threadsafe(self.clear_input(term), loop)
                     else:
                         if self.input_filter(val) or not val.code:
                             run_coroutine_threadsafe(
                                 self.input_queue.put((self.mode, val)), loop
                             )
-                            inp = ""
                         else:
                             run_coroutine_threadsafe(
                                 self.input_queue.put((self.mode, val.code)),
                                 loop,
                             )
-                            inp = ""
 
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""
-        text = (self.real_width) * " "
+        text = ""
         await self.display_prompt(text, t)
 
     async def display_prompt(self, text: str, t: Terminal) -> None:
         """Display text in the input prompt."""
-        x_pos = len(self.prompt) + self.x + int("l" in self.margins)
+        prompt_location = self.prompt_location()
+        x_pos = prompt_location[0]
+        y_pos = prompt_location[1]
+
+        with t.hidden_cursor(), t.location(x_pos, y_pos):
+            out = self.truncate_input(text, t)
+            out = t.ljust(out, self.real_width)
+            print(out, end="")
+
+    def prompt_location(self) -> Tuple[int, int]:
+        """Return x and y coordinates of prompt."""
+        x_pos = (
+            Terminal().length(self.prompt) + self.x + int("l" in self.margins)
+        )
         y_pos = self.y + self.prompt_position
-        with t.location(x_pos, y_pos):
-            print(self.truncate_input(text, t), end="")
+
+        return x_pos, y_pos
 
     def truncate_input(self, text: str, t: Terminal) -> str:
         """Truncate text to fit into the input box."""
         out = text
-        if len(text) > self.real_width:
-            out = t.on_white("<") + ""
-            out += text[len(text) - (self.real_width) + 1:]  # fmt: skip
+        if t.length(text) > self.real_width:
+            out = text[t.length(text) - (self.real_width) + 1:]  # fmt: skip
+            out = t.on_red("<") + out
             # fmt:skip
         return out
 
-    async def render(self) -> None:
+    async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        t = Terminal()
         with t.location(self.x, self.y), t.hidden_cursor():
             print(self.prompt, end="")
-        print(
-            t.move_xy(
-                len(self.prompt) + self.x + int("l" in self.margins),
-                self.y + self.prompt_position,
-            ),
-            end="",
-        )
+
+        prompt_location = self.prompt_location()
+        print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
 
     def input_filter(self, keystroke: keyboard.Keystroke) -> bool:
         """
@@ -401,9 +421,10 @@ class ChatTile(Tile):
     async def on_buffer_change(self) -> None:
         """Something happens on buffer change."""
         # pass
-        await self.render()
+        t = Terminal()
+        await self.render(t)
 
-    async def consume_input(self, inp: str) -> None:
+    async def consume_input(self, inp: str, t: Terminal) -> None:
         """
         Consume user input.
 
@@ -419,11 +440,9 @@ class ChatTile(Tile):
             )
         )
 
-    async def render(self) -> None:
+    async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        t = Terminal()
-
-        await Tile.render(self)
+        await Tile.render(self, t)
 
         # hardcoded identity
         myself = UserModel(username="Alice", id="123", color="none")

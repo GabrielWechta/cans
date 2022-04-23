@@ -5,6 +5,7 @@ import hashlib
 import signal
 from datetime import datetime
 from random import choice
+from threading import Event
 from typing import Any, Callable, Mapping, Optional
 
 from blessed import Terminal
@@ -36,6 +37,7 @@ monad = MonadTallLayout(
     height=term.height - 2 - 1,
     x=0,
     y=header.height,
+    term=term,
     use_margins=True,
 )
 footer = InputTile(
@@ -167,8 +169,8 @@ monad.add(Tile("a name"))
 monad.add(Tile("x names"))
 
 loop.run_until_complete(monad.render_all())
-loop.run_until_complete(header.render())
-loop.run_until_complete(footer.render())
+loop.run_until_complete(header.render(term))
+loop.run_until_complete(footer.render(term))
 
 footer.mode = ""
 
@@ -178,12 +180,7 @@ async def run_in_thread(task: Callable, *args: Any) -> None:
     # it kinda works I guess somehow, prolly not thread safe
     # Run in a custom thread pool:
     pool = concurrent.futures.ThreadPoolExecutor()
-    result = loop.run_in_executor(pool, task, *args)  # noqa: FKA01
-    result = await result
-
-
-loop.create_task(run_in_thread(footer.input, term, loop))  # noqa: FKA01
-# i hate linters
+    await loop.run_in_executor(pool, task, *args)  # noqa: FKA01
 
 
 async def send_test_messages_from_bob() -> None:
@@ -198,24 +195,28 @@ async def send_test_messages_from_bob() -> None:
             from_user=bob, body="test message", date=datetime.now()
         )
         await chat.add_message_to_buffer(message)
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
 
 
-async def on_resize() -> None:
+on_resize_event = Event()
+
+
+def on_resize(*args: str) -> None:
     """Test function for on_resize events."""
     monad.screen_rect_change(
         width=term.width, height=term.height - 2 - 1, x=0, y=header.height
     )
     header.width = term.width
     # footer.on_resize(term)
-    await monad.render_all()
-    await header.render()
+    loop.create_task(monad.render_all())
+    loop.create_task(header.render(term))
+    on_resize_event.set()
 
 
 loop.create_task(send_test_messages_from_bob())
 
 # signal handling, it kinda works
-signal.signal(signal.SIGWINCH, lambda x, y: loop.create_task(on_resize()))
+loop.add_signal_handler(signal.SIGWINCH, on_resize)
 
 
 async def test() -> None:
@@ -253,10 +254,13 @@ async def test() -> None:
                     await monad.render_all()
         elif mode == "":
             if monad.current_tile:
-                await monad.current_tile.consume_input(inp)
+                await monad.current_tile.consume_input(inp, term)
 
 
-loop.run_until_complete(test())
+loop.create_task(test())
 
-# print(monad.screen_rect[1])
-# monad.layout_all()
+loop.create_task(
+    run_in_thread(footer.input, term, loop, on_resize_event)  # noqa: FKA01
+)
+
+loop.run_forever()

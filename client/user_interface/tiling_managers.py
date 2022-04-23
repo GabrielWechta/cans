@@ -164,6 +164,7 @@ class MonadTallLayout:
         height: int,
         x: int,
         y: int,
+        term: Terminal,
         use_margins: bool = False,
     ) -> None:
         """Init the view."""
@@ -181,6 +182,8 @@ class MonadTallLayout:
             self.screen_rect.height / self.min_secondary_size
         )
 
+        self.term: Terminal = term
+
     # 'Hack' for linter coz it has a problem :)
     def clone(self) -> "MonadTallLayout":
         """Clone layout for other Views."""
@@ -189,12 +192,14 @@ class MonadTallLayout:
             height=self.screen_rect.height,
             x=self.screen_rect.x,
             y=self.screen_rect.y,
+            term=self.term,
         )
         c.absolute_sizes = []
         c.screen_rect = self.screen_rect
         c.ratio = self.ratio
         c.align = self.align
         c.use_margins = self.use_margins
+        c.term = self.term
         return c
 
     def _get_relative_size_from_absolute(self, absolute_size: int) -> float:
@@ -208,20 +213,31 @@ class MonadTallLayout:
     ) -> None:
         """Set the screen rect and redraw the screen."""
         # Save relative sizes to preserve them
-        relative_sizes = [
-            self._get_relative_size_from_absolute(val)
-            for val in self.absolute_sizes
-        ]
+        # relative_sizes = [
+        #    self._get_relative_size_from_absolute(val)
+        #    for val in self.absolute_sizes
+        # ]
 
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
             width=width, height=height, x=x, y=y
         )
-        self._relative_sizes_to_absolute(relative_sizes)
+        # self._relative_sizes_to_absolute(relative_sizes)
 
         self.max_displayed_windows = math.floor(
             self.screen_rect.height / self.min_secondary_size
         )
 
+        # if the windows cant render, just kill them
+        for i in range(
+            start=self.max_displayed_windows - len(self.tiles), stop=0, step=1
+        ):
+            try:
+                tile = self.tiles[i]
+                self.tiles.remove(tile)
+            except IndexError:
+                continue
+
+        self.cmd_normalize()
         self.layout_all()
 
     @property
@@ -233,6 +249,7 @@ class MonadTallLayout:
         """Add tile to layout."""
         if len(self.tiles) > self.max_displayed_windows:
             return "Max amount of tiles reached"
+
         self.tiles.add(tile, tile_position=MonadTallLayout.new_tile_position)
         self.cmd_normalize()
         return None
@@ -855,7 +872,7 @@ class MonadTallLayout:
 
     async def render_all(self) -> None:
         """Render all tiles on screen."""
-        term = Terminal()
+        term = self.term
         if len(self.tiles) == 0:
             screen = self.screen_rect
             for y in range(0, (screen.height)):
@@ -868,6 +885,7 @@ class MonadTallLayout:
 
     async def render_secondary(self) -> None:
         """Render secondary tiles on screen."""
+        term = self.term
         for tile in self.tiles[1:]:
             i1 = self.tiles.index(tile)
             i2 = self.tiles.current_index
@@ -878,10 +896,11 @@ class MonadTallLayout:
             else:
                 tile.margins = ""
 
-            await tile.render()
+            await tile.render(term)
 
     async def render_main(self) -> None:
         """Render main tile on screen."""
+        term = self.term
         tile = self.tiles[0]
         tile.focused = self.tiles.current_index == 0
 
@@ -890,11 +909,11 @@ class MonadTallLayout:
         else:
             tile.margins = ""
 
-        await tile.render()
+        await tile.render(term)
 
     async def render_focus(self) -> None:
         """Render only the focus indicator on screen."""
-        term = Terminal()
+        term = self.term
         for tile in self.tiles:
             i1 = self.tiles.index(tile)
             i2 = self.tiles.current_index
