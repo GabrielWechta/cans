@@ -74,7 +74,7 @@ class MockClient(Client):
         timeout = 5
         try:
             message = await asyncio.wait_for(
-                self.session_manager.receive_message(), timeout
+                self.session_manager.receive_user_message(), timeout
             )
             self.log.debug(
                 f"Received message {message.payload}"

@@ -76,26 +76,35 @@ class Client:
         """Run dummy client application."""
         # Connect to the server
         self.event_loop.run_until_complete(
-            asyncio.gather(
+            asyncio.gather(  # noqa: FKA01
                 self.session_manager.connect(
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
                     friends=["cans-echo-service"],
                 ),
-                self._handle_downstream_traffic(),
+                self._handle_downstream_user_traffic(),
+                self._handle_downstream_system_traffic(),
             )
         )
 
-    async def _handle_downstream_traffic(self) -> None:
-        """Handle downstream messages."""
+    async def _handle_downstream_user_traffic(self) -> None:
+        """Handle downstream user messages."""
         while True:
-            message = await self.session_manager.receive_message()
+            message = await self.session_manager.receive_user_message()
 
             self.log.debug(f"Received message from {message.header.sender}")
 
             # TODO: Add message to database
 
-            # Handle system messages
+            # Forward to UI
+            self.ui.on_new_message_received(
+                message.payload, message.header.sender
+            )
+
+    async def _handle_downstream_system_traffic(self) -> None:
+        """Handle downstream server messages."""
+        while True:
+            message = await self.session_manager.receive_system_message()
             if message.header.msg_id == CansMsgId.PEER_LOGIN:
                 # TODO: make it more general
                 payload = Terminal().green_underline("User just logged in!")
@@ -114,9 +123,9 @@ class Client:
                     payload, message.payload["peer"]
                 )
             else:
-                # Forward to UI
-                self.ui.on_new_message_received(
-                    message.payload, message.header.sender
+                self.log.error(
+                    "Received unsupported system message"
+                    + f" {message.header.msg_id}"
                 )
 
     async def _handle_upstream_message(

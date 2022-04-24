@@ -72,7 +72,8 @@ class SessionManager:
             # fmt: on
         }
         self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
-        self.downstream_message_queue: asyncio.Queue = asyncio.Queue()
+        self.downstream_user_message_queue: asyncio.Queue = asyncio.Queue()
+        self.downstream_system_message_queue: asyncio.Queue = asyncio.Queue()
 
     async def connect(
         self, url: str, certpath: str, friends: List[PubKeyDigest]
@@ -104,9 +105,13 @@ class SessionManager:
         """Send an outgoing message."""
         await self.upstream_message_queue.put(message)
 
-    async def receive_message(self) -> CansMessage:
-        """Wait for an incoming message."""
-        return await self.downstream_message_queue.get()
+    async def receive_user_message(self) -> CansMessage:
+        """Wait for an incoming user message."""
+        return await self.downstream_user_message_queue.get()
+
+    async def receive_system_message(self) -> CansMessage:
+        """Wait for an incoming system notification."""
+        return await self.downstream_system_message_queue.get()
 
     def user_message_to(self, peer: PubKeyDigest, payload: str) -> UserMessage:
         """Create a user message to a peer."""
@@ -181,11 +186,11 @@ class SessionManager:
 
         if sender in self.active_sessions.keys():
             message = self._decrypt_user_payload(message)
-            await self.downstream_message_queue.put(message)
+            await self.downstream_user_message_queue.put(message)
         else:
             self._activate_inbound_session(message)
             message = self._decrypt_user_payload_prekey(message)
-            await self.downstream_message_queue.put(message)
+            await self.downstream_user_message_queue.put(message)
 
     async def _handle_message_peer_unavailable(
         self, message: CansMessage
@@ -195,7 +200,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of peer unavailable
         self.log.warning(f"Peer {peer} unavailable!")
-        await self.downstream_message_queue.put(message)
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
@@ -207,7 +212,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user login
         self.log.info(f"Peer {peer} just logged in!")
-        await self.downstream_message_queue.put(message)
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
@@ -220,7 +225,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user logout
         self.log.info(f"Peer {peer} just logged out!")
-        await self.downstream_message_queue.put(message)
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_replenish_one_time_keys_req(
         self, message: CansMessage

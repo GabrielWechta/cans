@@ -49,9 +49,15 @@ class MockClient(Client):
             account=account,
         )
 
-    async def _handle_downstream_traffic(self) -> None:
-        """Mock downstream handler."""
-        self.log.debug("Mock downstream handler called at client level")
+    async def _handle_downstream_user_traffic(self) -> None:
+        """Mock user downstream handler."""
+        self.log.debug("Mock user downstream handler called at client level")
+
+    async def _handle_downstream_system_traffic(self) -> None:
+        """Mock control downstream handler."""
+        self.log.debug(
+            "Mock control downstream handler called at client level"
+        )
 
 
 def test_basic_connect():
