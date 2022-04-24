@@ -99,11 +99,20 @@ class Client:
             if message.header.msg_id == CansMsgId.PEER_LOGIN:
                 # TODO: make it more general
                 payload = Terminal().green_underline("User just logged in!")
-                self.ui.on_system_message_received(payload)
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
             elif message.header.msg_id == CansMsgId.PEER_LOGOUT:
                 # TODO: make it more general
                 payload = Terminal().red_underline("User just logged out!")
-                self.ui.on_system_message_received(payload)
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
+            elif message.header.msg_id == CansMsgId.PEER_UNAVAILABLE:
+                payload = Terminal().silver("User is unavailable")
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
             else:
                 # Forward to UI
                 self.ui.on_new_message_received(

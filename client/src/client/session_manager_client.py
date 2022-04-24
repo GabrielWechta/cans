@@ -187,6 +187,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of peer unavailable
         self.log.warning(f"Peer {peer} unavailable!")
+        await self.downstream_message_queue.put(message)
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""

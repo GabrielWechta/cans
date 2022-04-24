@@ -76,8 +76,7 @@ class UserInterface:
         self.view.add_message(user, message)
 
     def on_system_message_received(
-        self,
-        message: str,
+        self, message: str, relevant_user: Union[UserModel, str, None] = None
     ) -> None:
         """Handle new system message and add it to proper chat tiles."""
         message_model = MessageModel(
@@ -86,11 +85,14 @@ class UserInterface:
             from_user=self.system_user,
             to_user=self.myself,
         )
-        tile = self.view.layout.current_tile
-        if isinstance(tile, ChatTile):
-            self.view.add_message(tile.chat_with, message_model)
+        if not relevant_user:
+            tile = self.view.layout.current_tile
+            if isinstance(tile, ChatTile):
+                self.view.add_message(tile.chat_with, message_model)
+            else:
+                pass
         else:
-            pass
+            self.on_new_message_received(message_model, relevant_user)
 
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""

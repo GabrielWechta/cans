@@ -327,6 +327,13 @@ class InputTile(Tile):
                             or val.code == term.KEY_DELETE
                         ):
                             inp = inp[:-1]
+                            print(
+                                term.move_xy(
+                                    prompt_location[0] + term.length(inp),
+                                    prompt_location[1],
+                                ),
+                                end="",
+                            )
                         elif self.input_filter(val):
                             inp += val + add_input
                         run_coroutine_threadsafe(
