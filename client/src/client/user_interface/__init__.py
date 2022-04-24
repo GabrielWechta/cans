@@ -1,7 +1,7 @@
 """CANS application UI."""
 import asyncio
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional, Union
+from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
@@ -55,6 +55,8 @@ class UserInterface:
             'e': self.view.layout.cmd_normalize,
             'r': self.view.layout.cmd_maximize,
 
+            # ctrl+a
+            chr(1):     self.view.layout.add,
             # ctrl+d
             chr(4):     self.view.layout.remove,
         }  # fmt: skip
@@ -64,6 +66,8 @@ class UserInterface:
             id="system",
             color="orange_underline",
         )
+
+        self.last_closed_tile: List[Tile] = []
 
     def on_new_message_received(
         self, message: Union[MessageModel, str], user: Union[UserModel, str]
@@ -118,13 +122,23 @@ class UserInterface:
                 if cmd:
                     # handle tile removal
                     if cmd == self.view.layout.remove:
-                        target = self.view.layout.focused
+                        target = self.view.layout.current_tile
                         try:
-                            cmd(self.view.layout.tiles[target])
+                            if target:
+                                self.last_closed_tile.append(target)
+                                cmd(target)
                         except IndexError:
-                            pass
+                            continue
+                    # handle last closed tile reopening
+                    elif cmd == self.view.layout.add:
+                        if len(self.last_closed_tile) > 0:
+                            target = self.last_closed_tile.pop()
+                            cmd(target)
+                        else:
+                            continue
                     else:
                         cmd()
+
                     if cmd in focus_cmds:
                         await self.view.layout.render_focus()
                     else:
