@@ -36,7 +36,7 @@ class Startup:
         pub_key = path.isfile(self.user_public_key_path)
         priv_key = path.isfile(self.user_private_key_path)
 
-        return pub_key and priv_key
+        return not (pub_key and priv_key)
 
     def _hardware_fingerprint(self) -> str:
         """Derive a fingerprint from system hardware.

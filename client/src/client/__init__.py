@@ -32,7 +32,7 @@ class Client:
         self.log = logging.getLogger("cans-logger")
         self.startup = Startup()
 
-        # Check if necessaery files exist
+        # Check if necessary files exist
         if self.startup.is_first_startup():
             # TODO implement proper password prompts
             user_passphrase = "SafeAndSecurePassword2137"
