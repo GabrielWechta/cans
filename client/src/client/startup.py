@@ -27,7 +27,6 @@ class Startup:
 
     def cans_setup(self) -> None:
         """Create all necessary directories."""
-        # Create .cans directory
         mkdir(self._home_dir, mode=0o700)
         mkdir(self._keys_dir, mode=0o700)
 
@@ -75,8 +74,6 @@ class Startup:
 
         Save generated values to the .cans/keys directory.
         """
-        password = password
-
         priv_key = str(
             subprocess.run(
                 "openssl genrsa 4096",
@@ -103,23 +100,26 @@ class Startup:
         with open(self.user_public_key_path, "w") as public_key_file:
             public_key_file.write(pub_key)
 
-        # TODO encrypt private key
+        # TODO: Encrypt private key
+        password = password
 
+        # TODO: Clean up keys before returning them
         return pub_key, priv_key
 
     def decrypt_key_pair(self, password: str) -> KeyPair:
         """Decrypt key files and return them."""
-        pub_key = None
-        priv_key = None
+        pub_key = ""
+        priv_key = ""
         # Read public key from file
         with open(self.user_public_key_path, "r") as public_key_file:
             pub_key = public_key_file.read()
 
-        # Read purivate key from file
+        # Read private key from file
         with open(self.user_private_key_path, "r") as private_key_file:
             priv_key = private_key_file.read()
 
-        # TODO decrypt keys
+        # TODO: Decrypt keys
         password = password
 
+        # TODO: Clean up keys before returning them
         return pub_key, priv_key

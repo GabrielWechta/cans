@@ -32,9 +32,9 @@ class Client:
         self.log = logging.getLogger("cans-logger")
         self.startup = Startup()
 
+        # TODO: Implement proper password prompts during startup
         # Check if necessary files exist
         if self.startup.is_first_startup():
-            # TODO implement proper password prompts
             user_passphrase = "SafeAndSecurePassword2137"
             self.password = self.startup.get_password(user_passphrase)
             self.startup.cans_setup()
@@ -42,7 +42,6 @@ class Client:
                 self.password
             )
         else:
-            # TODO implement proper password prompts
             user_passphrase = "SafeAndSecurePassword2137"
             self.password = self.startup.get_password(user_passphrase)
             self.pub_key, self.priv_key = self.startup.decrypt_key_pair(
