@@ -73,7 +73,7 @@ class Client:
         )
 
     def run(self) -> None:
-        """Run the client application."""
+        """Run dummy client application."""
         # Connect to the server
         self.event_loop.run_until_complete(
             asyncio.gather(

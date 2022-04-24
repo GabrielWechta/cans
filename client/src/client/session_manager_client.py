@@ -59,7 +59,6 @@ class SessionManager:
         self.public_key, self.private_key = keys
         self.identity = digest_key(keys[0])
 
-        # TODO: Implement client-side logging
         self.log = logging.getLogger("cans-logger")
 
         self.message_handlers = {
@@ -85,8 +84,17 @@ class SessionManager:
         ssl_context.load_verify_locations(certpath)
         ssl_context.check_hostname = False
 
+        self.log.debug(f"Connecting to the server at {url}...")
+
         async with ws.connect(url, ssl=ssl_context) as conn:
+            self.log.debug(
+                "Successfully connected to the server. Running handshake..."
+            )
             await self._run_server_handshake(conn, friends)
+            self.log.debug(
+                "Handshake complete. Forking to handle"
+                + " upstream and downstream concurrently..."
+            )
             await asyncio.gather(
                 self._handle_upstream(conn),
                 self._handle_downstream(conn),
@@ -229,6 +237,7 @@ class SessionManager:
 
     def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
         """Transform potential session into an active outbound session."""
+        self.log.debug(f"Activating outbound session with {peer}...")
         # Remove entry from potential sessions
         potential_session = self.potential_sessions.pop(peer)
         # Transform potential session to active session
@@ -243,6 +252,7 @@ class SessionManager:
     def _activate_inbound_session(self, message: CansMessage) -> None:
         """Activate an inbound session based on a received prekey message."""
         peer = message.header.sender
+        self.log.debug(f"Activating inbound session with {peer}...")
         prekey_message = OlmPreKeyMessage(message.payload)
         # Remove peer from potential sessions if present
         if peer in self.potential_sessions:

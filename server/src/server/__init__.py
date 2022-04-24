@@ -55,4 +55,4 @@ class Server:
 
         logger.setLevel(logging.INFO)
         # NOTE: Uncomment to enable debug logging during development
-        # logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
