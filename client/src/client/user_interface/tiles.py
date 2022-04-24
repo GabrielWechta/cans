@@ -302,7 +302,9 @@ class InputTile(Tile):
                 # workaround to have a working ctrl+c in raw mode
                 # and with threads
                 if val == chr(3):
-                    os._exit(1)
+                    # os._exit(1)
+                    # break the loop to leave raw environment
+                    break
                 # if normal mode
                 if self.mode == "":
                     if val.code == term.KEY_ESCAPE:
@@ -344,6 +346,8 @@ class InputTile(Tile):
                                 self.input_queue.put((self.mode, val.code)),
                                 loop,
                             )
+        # straight up kill the app after ctrl+c
+        os._exit(1)
 
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""
@@ -408,13 +412,18 @@ class ChatTile(Tile):
     """Chat tile."""
 
     def __init__(
-        self, chat_with: UserModel, *args: Any, **kwargs: Any
+        self,
+        chat_with: UserModel,
+        identity: UserModel,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         """Init chat Tile."""
         Tile.__init__(self, *args, **kwargs)
         self._buffer: List[MessageModel] = []
         self.new_messages: Queue = Queue()
         self.chat_with = chat_with
+        self.myself = identity
 
     @property
     def buffer(self) -> List[MessageModel]:
@@ -459,29 +468,18 @@ class ChatTile(Tile):
         """Render the Tile."""
         await Tile.render(self, t)
 
-        # hardcoded identity
-        myself = UserModel(username="Alice", id="123", color="green")
-
         # construct message buffer
         buffer = []
         for mes in self._buffer:
 
             message = t.gray(mes.date.strftime("[%H:%M]"))
             user_color = getattr(t, mes.from_user.color)
-            if mes.from_user.username == myself.username:
-                message += (
-                    t.gray("[")
-                    + user_color(mes.from_user.username)
-                    + t.gray("]> ")
-                    + str(mes.body)
-                )
-            else:
-                message += (
-                    t.gray("[")
-                    + user_color(mes.from_user.username)
-                    + t.gray("]> ")
-                    + str(mes.body)
-                )
+            message += (
+                t.gray("[")
+                + user_color(mes.from_user.username)
+                + t.gray("]> ")
+                + str(mes.body)
+            )
 
             wrapped = (
                 t.wrap(message, self.real_width) if self.real_width > 0 else []

@@ -198,6 +198,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user login
         self.log.info(f"Peer {peer} just logged in!")
+        await self.downstream_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
@@ -210,6 +211,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user logout
         self.log.info(f"Peer {peer} just logged out!")
+        await self.downstream_message_queue.put(message)
 
     async def _handle_message_replenish_one_time_keys_req(
         self, message: CansMessage

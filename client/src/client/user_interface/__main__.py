@@ -18,7 +18,11 @@ async def upstream_sink(message_model: MessageModel) -> None:
 term = Terminal()
 loop = asyncio.get_event_loop()
 
-ui = UserInterface(loop, upstream_sink)
+ui = UserInterface(
+    loop=loop,
+    upstream_callback=upstream_sink,
+    identity=UserModel(username="Alice", id="13", color="green"),
+)
 
 eve = UserModel(
     username="Eve",
@@ -42,7 +46,7 @@ loop.create_task(ui.view.render_all())
 async def send_test_messages_from_bob() -> None:
     """Send some stuff from bob."""
     while True:
-        ui.on_new_message_received_str("test message", bob)
+        ui.on_new_message_received("test message", bob)
         await asyncio.sleep(2)
 
 

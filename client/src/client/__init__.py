@@ -5,9 +5,11 @@ import logging
 import logging.handlers
 import os
 
+from blessed import Terminal
 from olm import Account
 
 from common.keys import digest_key
+from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
 from .models import MessageModel, UserModel
@@ -42,11 +44,6 @@ class Client:
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()
 
-        self.ui = UserInterface(
-            loop=self.event_loop,
-            upstream_callback=self._handle_upstream_message,
-        )
-
         # TODO: Remove hardcoded identity
         pub_key = "AlicePubKey"
         priv_key = "AlicePrivKey"
@@ -55,8 +52,15 @@ class Client:
             username="Alice", id=digest_key(pub_key), color="blue"
         )
         echo_client = UserModel(
-            username="cans-echo-service", id="cans-echo-service", color="red"
+            username="Echo", id="cans-echo-service", color="red"
         )
+
+        self.ui = UserInterface(
+            loop=self.event_loop,
+            upstream_callback=self._handle_upstream_message,
+            identity=self.myself,
+        )
+
         self.ui.view.add_chat(echo_client)
 
         # TODO: During early startup pickled olm.Account should be un-pickled
@@ -89,17 +93,22 @@ class Client:
 
             self.log.debug(f"Received message from {message.header.sender}")
 
-            sender = UserModel(
-                # TODO: Translate to local view username
-                username=message.header.sender,
-                id=message.header.sender,
-                color="red",
-            )
-
             # TODO: Add message to database
 
-            # Forward to UI
-            self.ui.on_new_message_received_str(message.payload, sender)
+            # Handle system messages
+            if message.header.msg_id == CansMsgId.PEER_LOGIN:
+                # TODO: make it more general
+                payload = Terminal().green_underline("User just logged in!")
+                self.ui.on_system_message_received(payload)
+            elif message.header.msg_id == CansMsgId.PEER_LOGOUT:
+                # TODO: make it more general
+                payload = Terminal().red_underline("User just logged out!")
+                self.ui.on_system_message_received(payload)
+            else:
+                # Forward to UI
+                self.ui.on_new_message_received(
+                    message.payload, message.header.sender
+                )
 
     async def _handle_upstream_message(
         self, message_model: MessageModel

@@ -17,6 +17,7 @@ class UserInterface:
         self,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
         upstream_callback: Callable,
+        identity: UserModel,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
@@ -27,13 +28,13 @@ class UserInterface:
         self.upstream_callback = upstream_callback
 
         # Instantiate a view
-        self.view = View(self.term, self.loop)
+        self.view = View(term=self.term, loop=self.loop, identity=identity)
 
         # start user input handler
         self.loop.create_task(self._handle_user_input())
 
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="green")
+        self.myself = identity
         self.cmds_layout: Mapping[Any, Callable[..., Optional[str]]] = {
             # arrow keys
             self.term.KEY_LEFT:  self.view.layout.cmd_left,
@@ -58,24 +59,34 @@ class UserInterface:
             chr(4):     self.view.layout.remove,
         }  # fmt: skip
         """Mapping for layout changing commands"""
-
-    def on_new_message_received_str(
-        self, message: str, user: UserModel
-    ) -> None:
-        """Handle new message and add it to proper chat tiles."""
-        new_message = MessageModel(
-            from_user=user,
-            to_user=self.myself,
-            body=message,
-            date=datetime.now(),
+        self.system_user = UserModel(
+            username="System",
+            id="system",
+            color="orange_underline",
         )
-        self.view.add_message(user, new_message)
 
     def on_new_message_received(
-        self, message: MessageModel, user: UserModel
+        self, message: Union[MessageModel, str], user: Union[UserModel, str]
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
         self.view.add_message(user, message)
+
+    def on_system_message_received(
+        self,
+        message: str,
+    ) -> None:
+        """Handle new system message and add it to proper chat tiles."""
+        message_model = MessageModel(
+            date=datetime.now(),
+            body=message,
+            from_user=self.system_user,
+            to_user=self.myself,
+        )
+        tile = self.view.layout.current_tile
+        if isinstance(tile, ChatTile):
+            self.view.add_message(tile.chat_with, message_model)
+        else:
+            pass
 
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""

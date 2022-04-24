@@ -145,3 +145,6 @@ log/
 
 # Quick fix for olm
 !resources/olm/lib
+
+# ignore custom fish scipts
+*.fish
