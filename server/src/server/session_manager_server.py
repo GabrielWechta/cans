@@ -76,7 +76,9 @@ class SessionManager:
 
         # Add subscriptions to the database
         for peer in subscriptions:
-            self.log.debug(f"User {public_key_digest} subscribing for {peer}")
+            self.log.debug(
+                f"User '{public_key_digest}' subscribing for {peer}"
+            )
             await self.database_manager.add_subscriber_of(
                 peer, public_key_digest
             )

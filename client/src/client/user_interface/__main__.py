@@ -4,16 +4,25 @@ import hashlib
 
 from blessed import Terminal
 
-from ..models import UserModel
+from ..models import MessageModel, UserModel
 from ..user_interface import UserInterface
 
 # from .view import View
 
 
+async def upstream_sink(message_model: MessageModel) -> None:
+    """Drop outgoing messages."""
+    assert message_model
+
+
 term = Terminal()
 loop = asyncio.get_event_loop()
 
-ui = UserInterface(loop)
+ui = UserInterface(
+    loop=loop,
+    upstream_callback=upstream_sink,
+    identity=UserModel(username="Alice", id="13", color="green"),
+)
 
 eve = UserModel(
     username="Eve",
@@ -37,7 +46,7 @@ loop.create_task(ui.view.render_all())
 async def send_test_messages_from_bob() -> None:
     """Send some stuff from bob."""
     while True:
-        ui.on_new_message_received_str("test message", bob)
+        ui.on_new_message_received("test message", bob)
         await asyncio.sleep(2)
 
 

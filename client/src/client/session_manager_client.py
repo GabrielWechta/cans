@@ -59,7 +59,6 @@ class SessionManager:
         self.public_key, self.private_key = keys
         self.identity = digest_key(keys[0])
 
-        # TODO: Implement client-side logging
         self.log = logging.getLogger("cans-logger")
 
         self.message_handlers = {
@@ -73,7 +72,8 @@ class SessionManager:
             # fmt: on
         }
         self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
-        self.downstream_message_queue: asyncio.Queue = asyncio.Queue()
+        self.downstream_user_message_queue: asyncio.Queue = asyncio.Queue()
+        self.downstream_system_message_queue: asyncio.Queue = asyncio.Queue()
 
     async def connect(
         self, url: str, certpath: str, friends: List[PubKeyDigest]
@@ -85,8 +85,17 @@ class SessionManager:
         ssl_context.load_verify_locations(certpath)
         ssl_context.check_hostname = False
 
+        self.log.debug(f"Connecting to the server at {url}...")
+
         async with ws.connect(url, ssl=ssl_context) as conn:
+            self.log.debug(
+                "Successfully connected to the server. Running handshake..."
+            )
             await self._run_server_handshake(conn, friends)
+            self.log.debug(
+                "Handshake complete. Forking to handle"
+                + " upstream and downstream concurrently..."
+            )
             await asyncio.gather(
                 self._handle_upstream(conn),
                 self._handle_downstream(conn),
@@ -96,9 +105,19 @@ class SessionManager:
         """Send an outgoing message."""
         await self.upstream_message_queue.put(message)
 
-    async def receive_message(self) -> CansMessage:
-        """Wait for an incoming message."""
-        return await self.downstream_message_queue.get()
+    async def receive_user_message(self) -> CansMessage:
+        """Wait for an incoming user message."""
+        return await self.downstream_user_message_queue.get()
+
+    async def receive_system_message(self) -> CansMessage:
+        """Wait for an incoming system notification."""
+        return await self.downstream_system_message_queue.get()
+
+    def user_message_to(self, peer: PubKeyDigest, payload: str) -> UserMessage:
+        """Create a user message to a peer."""
+        message = UserMessage(peer, payload)
+        message.header.sender = self.identity
+        return message
 
     async def _run_server_handshake(
         self, conn: ws.WebSocketClientProtocol, friends: List[PubKeyDigest]
@@ -167,11 +186,11 @@ class SessionManager:
 
         if sender in self.active_sessions.keys():
             message = self._decrypt_user_payload(message)
-            await self.downstream_message_queue.put(message)
+            await self.downstream_user_message_queue.put(message)
         else:
             self._activate_inbound_session(message)
             message = self._decrypt_user_payload_prekey(message)
-            await self.downstream_message_queue.put(message)
+            await self.downstream_user_message_queue.put(message)
 
     async def _handle_message_peer_unavailable(
         self, message: CansMessage
@@ -181,6 +200,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of peer unavailable
         self.log.warning(f"Peer {peer} unavailable!")
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
@@ -192,6 +212,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user login
         self.log.info(f"Peer {peer} just logged in!")
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
@@ -204,6 +225,7 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user logout
         self.log.info(f"Peer {peer} just logged out!")
+        await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_replenish_one_time_keys_req(
         self, message: CansMessage
@@ -218,14 +240,9 @@ class SessionManager:
         rep_otk_resp = ReplenishOneTimeKeysResp(one_time_keys=one_time_keys)
         await self.upstream_message_queue.put(rep_otk_resp)
 
-    def _user_message_to(self, peer: PubKeyDigest) -> UserMessage:
-        """Create a user message to a peer."""
-        message = UserMessage(peer)
-        message.header.sender = self.identity
-        return message
-
     def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
         """Transform potential session into an active outbound session."""
+        self.log.debug(f"Activating outbound session with {peer}...")
         # Remove entry from potential sessions
         potential_session = self.potential_sessions.pop(peer)
         # Transform potential session to active session
@@ -240,6 +257,7 @@ class SessionManager:
     def _activate_inbound_session(self, message: CansMessage) -> None:
         """Activate an inbound session based on a received prekey message."""
         peer = message.header.sender
+        self.log.debug(f"Activating inbound session with {peer}...")
         prekey_message = OlmPreKeyMessage(message.payload)
         # Remove peer from potential sessions if present
         if peer in self.potential_sessions:

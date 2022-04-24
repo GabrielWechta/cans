@@ -6,6 +6,7 @@ Divides terminal into independent windows
 import asyncio
 import concurrent
 import hashlib
+import logging
 import signal
 from datetime import datetime
 from threading import Event
@@ -14,7 +15,7 @@ from typing import Any, Callable, List, Union
 from blessed import Terminal
 
 from ..models import MessageModel, UserModel
-from .tiles import ChatTile, HeaderTile, InputTile, Tile
+from .tiles import ChatTile, HeaderTile, InputTile
 from .tiling_managers import MonadTallLayout
 
 
@@ -29,15 +30,18 @@ class View:
         self,
         term: Terminal,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
+        identity: UserModel,
     ) -> None:
         """Instantiate a view."""
         self.term = Terminal()
         self.loop = loop
 
+        self.log = logging.getLogger("cans-logger")
+
         self.on_resize_event = Event()
 
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="green")
+        self.myself = identity
 
         # create a header tile -- always on top
         header = HeaderTile(
@@ -128,31 +132,59 @@ class View:
             name="Chat",
             chat_with=chat_with,
             title=f"Chat with {color(chat_with.username)}",
+            identity=self.myself,
         )
         self.layout.add(chat)
         self.loop.create_task(self.layout.render_all())
 
-    def find_chats(self, chats_with: UserModel) -> List[Tile]:
-        """Find chat tiles with a given user."""
+    def find_chats(self, chats_with: Union[UserModel, str]) -> List[ChatTile]:
+        """Find chat tiles with a given user or user id."""
         found_tiles = []
 
+        # if UserModel is provided
+        if isinstance(chats_with, UserModel):
+            user_id = chats_with.id
+        # if string is provided
+        else:
+            user_id = chats_with
+
         for tile in self.layout.tiles:
-            # fuck mypy dude im not gonna fight with inheritance
-            if (
-                type(tile)
-            ) == ChatTile and tile.chat_with == chats_with:  # type: ignore
+            # f*ck mypy dude im not gonna fight with inheritance
+            if isinstance(tile, ChatTile) and tile.chat_with.id == user_id:
                 found_tiles.append(tile)
 
         return found_tiles
 
-    def add_message(self, chat_with: UserModel, message: MessageModel) -> None:
-        """Add a message to buffers of chat tiles with given user."""
+    def add_message(
+        self,
+        chat_with: Union[UserModel, str],
+        message: Union[MessageModel, str],
+    ) -> None:
+        """Add a message to buffers of chat tiles with given user of id."""
         chats = self.find_chats(chat_with)
-        if chats is not None:
+        if len(chats) > 0:
+            # if we're provided with a MessageModel, just use it
+            if isinstance(message, MessageModel):
+                new_message = message
+            # else we only have payload, so we have to construct it
+            else:
+                new_message = MessageModel(
+                    from_user=chats[0].chat_with,  # type: ignore
+                    to_user=self.myself,
+                    body=message,  # type: ignore
+                    date=datetime.now(),
+                )
+
             for chat in chats:
                 self.loop.create_task(
-                    chat.add_message_to_buffer(message)  # type: ignore
+                    chat.add_message_to_buffer(new_message)  # type: ignore
                 )  # type: ignore
+        else:
+            self.log.error(
+                # it's always either a dataclass or string, should print nicely
+                f"Tried adding message {message}"
+                + f" to a non-existing chat with {chat_with}"
+            )
 
     def input_queue(self) -> asyncio.Queue:
         """Return user input queue."""
@@ -163,7 +195,11 @@ if __name__ == "__main__":
     term = Terminal()
     loop = asyncio.get_event_loop()
 
-    view = View(term, loop)
+    view = View(
+        term=term,
+        loop=loop,
+        identity=UserModel(username="Alice", id="13", color="green"),
+    )
 
     eve = UserModel(
         username="Eve",

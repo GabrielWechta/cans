@@ -1,7 +1,7 @@
 """CANS application UI."""
 import asyncio
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional, Union
+from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
@@ -14,21 +14,27 @@ class UserInterface:
     """CANS application UI."""
 
     def __init__(
-        self, loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop]
+        self,
+        loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
+        upstream_callback: Callable,
+        identity: UserModel,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
         self.term = Terminal()
         self.loop = loop
 
+        # Store the client callback
+        self.upstream_callback = upstream_callback
+
         # Instantiate a view
-        self.view = View(self.term, self.loop)
+        self.view = View(term=self.term, loop=self.loop, identity=identity)
 
         # start user input handler
         self.loop.create_task(self._handle_user_input())
 
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="green")
+        self.myself = identity
         self.cmds_layout: Mapping[Any, Callable[..., Optional[str]]] = {
             # arrow keys
             self.term.KEY_LEFT:  self.view.layout.cmd_left,
@@ -49,28 +55,44 @@ class UserInterface:
             'e': self.view.layout.cmd_normalize,
             'r': self.view.layout.cmd_maximize,
 
+            # ctrl+a
+            chr(1):     self.view.layout.add,
             # ctrl+d
             chr(4):     self.view.layout.remove,
         }  # fmt: skip
         """Mapping for layout changing commands"""
-
-    def on_new_message_received_str(
-        self, message: str, user: UserModel
-    ) -> None:
-        """Handle new message and add it to proper chat tiles."""
-        new_message = MessageModel(
-            from_user=user,
-            to_user=self.myself,
-            body=message,
-            date=datetime.now(),
+        self.system_user = UserModel(
+            username="System",
+            id="system",
+            color="orange_underline",
         )
-        self.view.add_message(user, new_message)
+
+        self.last_closed_tile: List[Tile] = []
 
     def on_new_message_received(
-        self, message: MessageModel, user: UserModel
+        self, message: Union[MessageModel, str], user: Union[UserModel, str]
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
         self.view.add_message(user, message)
+
+    def on_system_message_received(
+        self, message: str, relevant_user: Union[UserModel, str, None] = None
+    ) -> None:
+        """Handle new system message and add it to proper chat tiles."""
+        message_model = MessageModel(
+            date=datetime.now(),
+            body=message,
+            from_user=self.system_user,
+            to_user=self.myself,
+        )
+        if not relevant_user:
+            tile = self.view.layout.current_tile
+            if isinstance(tile, ChatTile):
+                self.view.add_message(tile.chat_with, message_model)
+            else:
+                pass
+        else:
+            self.on_new_message_received(message_model, relevant_user)
 
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""
@@ -102,13 +124,23 @@ class UserInterface:
                 if cmd:
                     # handle tile removal
                     if cmd == self.view.layout.remove:
-                        target = self.view.layout.focused
+                        target = self.view.layout.current_tile
                         try:
-                            cmd(self.view.layout.tiles[target])
+                            if target:
+                                self.last_closed_tile.append(target)
+                                cmd(target)
                         except IndexError:
-                            pass
+                            continue
+                    # handle last closed tile reopening
+                    elif cmd == self.view.layout.add:
+                        if len(self.last_closed_tile) > 0:
+                            target = self.last_closed_tile.pop()
+                            cmd(target)
+                        else:
+                            continue
                     else:
                         cmd()
+
                     if cmd in focus_cmds:
                         await self.view.layout.render_focus()
                     else:
@@ -129,8 +161,8 @@ class UserInterface:
                     self.view.add_message(
                         tile.chat_with, new_message  # type: ignore
                     )  # type: ignore
-                    # some callback to client would be needed
-                    # TODO: add callback for client
+                    # pass the message to the client core
+                    await self.upstream_callback(new_message)
 
                 elif tile and tile_type == Tile:
                     tile.consume_input(inp, self.term)

@@ -1,13 +1,15 @@
 """CANS communicator frontend."""
 
 import asyncio
-import hashlib
+import logging
+import logging.handlers
 import os
-from datetime import datetime
 
+from blessed import Terminal
 from olm import Account
 
-from common.keys import PubKeyDigest
+from common.keys import digest_key
+from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
 from .models import MessageModel, UserModel
@@ -19,7 +21,7 @@ from .user_interface import UserInterface
 class Client:
     """Frontend application starter."""
 
-    def __init__(self, identity: PubKeyDigest) -> None:
+    def __init__(self) -> None:
         """Construct the client object."""
         # TODO: Parse environment variables
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -29,6 +31,7 @@ class Client:
         print(f"HWF: {self.osal.hardware_fingerprint()}")
 
         self._do_logger_config()
+        self.log = logging.getLogger("cans-logger")
 
         # TODO: Try early startup (decryption of keys, database access etc.)?
         #       Either way a later startup will need to be supported as user
@@ -41,54 +44,123 @@ class Client:
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()
 
-        self.ui = UserInterface(self.event_loop)
-        bob = UserModel(
-            username="Bob",
-            id=hashlib.md5("aa".encode("utf-8")).hexdigest(),
-            color="pink",
-        )
-
-        system = UserModel(
-            username="System",
-            id=hashlib.md5("system".encode("utf-8")).hexdigest(),
-            color="orange_underline",
-        )
+        # TODO: Remove hardcoded identity
+        pub_key = "AlicePubKey"
+        priv_key = "AlicePrivKey"
         # set identity
-        self.myself = UserModel(username="Alice", id="123", color="green")
-
-        self.ui.view.add_chat(bob)
-        self.ui.view.add_chat(bob)
-        self.ui.view.add_chat(bob)
-
-        message = MessageModel(
-            date=datetime.now(),
-            body="test",
-            from_user=system,
-            to_user=self.myself,
+        self.myself = UserModel(
+            username="Alice", id=digest_key(pub_key), color="blue"
+        )
+        echo_client = UserModel(
+            username="Echo", id="cans-echo-service", color="red"
         )
 
-        self.ui.on_new_message_received(message, bob)
+        self.ui = UserInterface(
+            loop=self.event_loop,
+            upstream_callback=self._handle_upstream_message,
+            identity=self.myself,
+        )
+
+        self.ui.view.add_chat(echo_client)
+
         # TODO: During early startup pickled olm.Account should be un-pickled
         #       and passed to TripleDiffieHellmanInterface and SessionManager
         account = Account()
 
-        # Session manager is the last needed component
         self.session_manager = SessionManager(
-            keys=(identity, identity),  # TODO: Add public/private key pair
+            keys=(pub_key, priv_key),
             account=account,
         )
 
     def run(self) -> None:
-        """Run the client application."""
+        """Run dummy client application."""
         # Connect to the server
         self.event_loop.run_until_complete(
-            self.session_manager.connect(
-                url=f"wss://{self.server_hostname}:{self.server_port}",
-                certpath=self.certpath,
-                friends=["cans-echo-service"],
+            asyncio.gather(  # noqa: FKA01
+                self.session_manager.connect(
+                    url=f"wss://{self.server_hostname}:{self.server_port}",
+                    certpath=self.certpath,
+                    friends=["cans-echo-service"],
+                ),
+                self._handle_downstream_user_traffic(),
+                self._handle_downstream_system_traffic(),
             )
         )
 
+    async def _handle_downstream_user_traffic(self) -> None:
+        """Handle downstream user messages."""
+        while True:
+            message = await self.session_manager.receive_user_message()
+
+            self.log.debug(f"Received message from {message.header.sender}")
+
+            # TODO: Add message to database
+
+            # Forward to UI
+            self.ui.on_new_message_received(
+                message.payload, message.header.sender
+            )
+
+    async def _handle_downstream_system_traffic(self) -> None:
+        """Handle downstream server messages."""
+        while True:
+            message = await self.session_manager.receive_system_message()
+            if message.header.msg_id == CansMsgId.PEER_LOGIN:
+                # TODO: make it more general
+                payload = Terminal().green_underline("User just logged in!")
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
+            elif message.header.msg_id == CansMsgId.PEER_LOGOUT:
+                # TODO: make it more general
+                payload = Terminal().red_underline("User just logged out!")
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
+            elif message.header.msg_id == CansMsgId.PEER_UNAVAILABLE:
+                payload = Terminal().silver("User is unavailable")
+                self.ui.on_system_message_received(
+                    payload, message.payload["peer"]
+                )
+            else:
+                self.log.error(
+                    "Received unsupported system message"
+                    + f" {message.header.msg_id}"
+                )
+
+    async def _handle_upstream_message(
+        self, message_model: MessageModel
+    ) -> None:
+        """Handle an upstream message."""
+        receiver = message_model.to_user
+        message = self.session_manager.user_message_to(
+            receiver.id, message_model.body
+        )
+
+        self.log.debug(f"Sending message to {message.header.receiver}...")
+
+        await self.session_manager.send_message(message)
+
     def _do_logger_config(self) -> None:
         """Initialize the logger."""
-        # TODO: Implement me!
+        logger = logging.getLogger("cans-logger")
+
+        # Prepare the formatter
+        formatter = logging.Formatter(
+            fmt="[%(levelname)s] %(asctime)s %(message)s",
+        )
+
+        # Create a rotating file handler
+        handler = logging.handlers.RotatingFileHandler(
+            filename=os.environ["CANS_CLIENT_LOGFILE_PATH"],
+            maxBytes=int(os.environ["CANS_CLIENT_LOGFILE_CAPACITY_KB"]) * 1024,
+        )
+
+        # Associate the formatter with the handler...
+        handler.setFormatter(formatter)
+        # ...and the handler with the logger
+        logger.addHandler(handler)
+
+        logger.setLevel(logging.INFO)
+        # NOTE: Uncomment to enable debug logging during development
+        # logger.setLevel(logging.DEBUG)

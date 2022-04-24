@@ -19,7 +19,7 @@ services:
   cans-echo-service:
     build:
       context: .
-      target: client_dev
+      target: client_echo
     container_name: cans-echo-service
     depends_on:
       - cans-server
