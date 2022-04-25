@@ -282,11 +282,11 @@ class InputTile(Tile):
                 if self.mode == "" and self.input_filter(val):
                     x_pos += 1
 
-                next = term.inkey(timeout=0.001)
+                next = term.inkey(timeout=0.010)
                 add_input = ""
                 while next and self.input_filter(next):
                     add_input += next
-                    next = term.inkey(timeout=0.001)
+                    next = term.inkey(timeout=0.010)
 
                 print(
                     term.move_xy(x_pos + term.length(add_input), y_pos), end=""
