@@ -61,6 +61,8 @@ class Client:
         echo_client = UserModel(
             username="Echo", id="cans-echo-service", color="red"
         )
+        bob_client = UserModel(username="Bob", id="bob guy", color="orange")
+        eve_client = UserModel(username="Eve", id="eeee", color="purple")
 
         self.ui = UserInterface(
             loop=self.event_loop,
@@ -68,6 +70,9 @@ class Client:
             identity=self.myself,
         )
 
+        self.ui.view.add_chat(echo_client)
+        self.ui.view.add_chat(bob_client)
+        self.ui.view.add_chat(eve_client)
         self.ui.view.add_chat(echo_client)
 
         # TODO: During early startup pickled olm.Account should be un-pickled

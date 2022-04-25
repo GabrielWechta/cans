@@ -1,5 +1,6 @@
 """CANS application UI."""
 import asyncio
+import os
 from datetime import datetime
 from typing import Any, Callable, List, Mapping, Optional, Union
 
@@ -23,6 +24,8 @@ class UserInterface:
         # Set terminal and event loop
         self.term = Terminal()
         self.loop = loop
+
+        print(self.term.enter_fullscreen, end="")
 
         # Store the client callback
         self.upstream_callback = upstream_callback
@@ -116,6 +119,11 @@ class UserInterface:
             inp = inp_tuple[1]
 
             cmd = None
+
+            # handle graceful exit
+            if mode == "exit":
+                print(self.term.exit_fullscreen)
+                os._exit(0)
 
             # layout mode, we're working inside the UI so
             # the user input isn't sent anywhere
