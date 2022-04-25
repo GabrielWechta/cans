@@ -1,7 +1,6 @@
 """Tile classes for emulating independent I/O widgets of specified size."""
 
 import math
-import os
 from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
 from datetime import datetime
 from threading import Event
@@ -283,11 +282,13 @@ class InputTile(Tile):
                 if self.mode == "" and self.input_filter(val):
                     x_pos += 1
 
-                next = term.inkey(timeout=0.001)
+                next = term.inkey(
+                    timeout=0.010
+                )  # this is basically polling rate
                 add_input = ""
                 while next and self.input_filter(next):
                     add_input += next
-                    next = term.inkey(timeout=0.001)
+                    next = term.inkey(timeout=0.010)
 
                 print(
                     term.move_xy(x_pos + term.length(add_input), y_pos), end=""
@@ -304,6 +305,10 @@ class InputTile(Tile):
                 if val == chr(3):
                     # os._exit(1)
                     # break the loop to leave raw environment
+                    # send a message that we want to quit
+                    run_coroutine_threadsafe(
+                        self.input_queue.put(("exit", "")), loop
+                    )
                     break
                 # if normal mode
                 if self.mode == "":
@@ -353,8 +358,7 @@ class InputTile(Tile):
                                 self.input_queue.put((self.mode, val.code)),
                                 loop,
                             )
-        # straight up kill the app after ctrl+c
-        os._exit(1)
+        # print(term.exit_fullscreen, end="")
 
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""

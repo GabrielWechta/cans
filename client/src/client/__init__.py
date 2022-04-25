@@ -61,6 +61,11 @@ class Client:
         echo_client = UserModel(
             username="Echo", id="cans-echo-service", color="red"
         )
+        bob_client = UserModel(username="Bob", id="bob_key", color="orange")
+        eve_client = UserModel(username="Eve", id="eve_key", color="purple")
+        # offline_client = UserModel(
+        #    username="Sleepy", id="doesnt exits", color="yellow"
+        # )
 
         self.ui = UserInterface(
             loop=self.event_loop,
@@ -69,6 +74,10 @@ class Client:
         )
 
         self.ui.view.add_chat(echo_client)
+        self.ui.view.add_chat(bob_client)
+        self.ui.view.add_chat(eve_client)
+        self.ui.view.add_chat(echo_client)
+        # self.ui.view.add_chat(offline_client)
 
         # TODO: During early startup pickled olm.Account should be un-pickled
         #       and passed to TripleDiffieHellmanInterface and SessionManager
@@ -87,7 +96,7 @@ class Client:
                 self.session_manager.connect(
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
-                    friends=["cans-echo-service"],
+                    friends=["cans-echo-service", "eve_key", "bob_key"],
                 ),
                 self._handle_downstream_user_traffic(),
                 self._handle_downstream_system_traffic(),

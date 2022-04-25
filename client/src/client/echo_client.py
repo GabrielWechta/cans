@@ -1,6 +1,7 @@
 """Echo client service."""
 import asyncio
 import os
+import sys
 
 from olm import Account
 
@@ -62,5 +63,11 @@ class EchoClient:
 
 
 if __name__ == "__main__":
-    client = EchoClient("cans-echo-service")
+    if len(sys.argv) > 1:
+        identity = sys.argv[1]
+    else:
+        identity = "cans-echo-service"
+
+    print(identity)
+    client = EchoClient(identity)
     client.run()

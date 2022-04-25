@@ -6,6 +6,15 @@ docker-compose up --build --detach cans-server || { echo "Starting the server fa
 docker-compose up --build --detach cans-echo-service || { \
     echo "Starting the echo service failed" && docker-compose down && exit 1; \
 }
+# Start the echo eve
+docker-compose up --build --detach cans-echo-eve --remove-orphans  || { \
+    echo "Starting the echo eve service failed" && docker-compose down && exit 1; \
+}
+# Start the echo bob
+docker-compose up --build --detach cans-echo-bob --remove-orphans  || { \
+    echo "Starting the echo bob service failed" && docker-compose down && exit 1; \
+}
+
 
 echo "Setting up local environment..."
 set -a
