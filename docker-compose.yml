@@ -29,6 +29,32 @@ services:
     networks:
       - cans-network
 
+  cans-echo-eve:
+    build:
+      context: .
+      target: client_echo
+    container_name: cans-echo-eve
+    depends_on:
+      - cans-server
+    command: python -u -m client.echo_client eve_key
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
+  cans-echo-bob:
+    build:
+      context: .
+      target: client_echo
+    container_name: cans-echo-bob
+    depends_on:
+      - cans-server
+    command: python -u -m client.echo_client bob_key
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
 networks:
   cans-network:
     name: cans-network

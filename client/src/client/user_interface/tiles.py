@@ -282,7 +282,9 @@ class InputTile(Tile):
                 if self.mode == "" and self.input_filter(val):
                     x_pos += 1
 
-                next = term.inkey(timeout=0.010)
+                next = term.inkey(
+                    timeout=0.010
+                )  # this is basically polling rate
                 add_input = ""
                 while next and self.input_filter(next):
                     add_input += next
