@@ -63,7 +63,7 @@ class MockClient(Client):
 
         # TODO: Fix handling outbound sessions being created by both
         # both parties concurrently and remove this
-        if "Bob" == self.test_peer:
+        if "test_multiple_clients_Bob" == self.test_peer:
             self.log.debug("Alice sleeping additional 2 seconds...")
             await asyncio.sleep(2)
 
@@ -91,13 +91,13 @@ class MockClient(Client):
 def test_multiple_clients():
     """Test running multiple users."""
     alice = MockClient(
-        my_keys=("Alice", "Alice"),
-        peer_pub_key="Bob",
+        my_keys=("test_multiple_clients_Alice", "test_multiple_clients_Alice"),
+        peer_pub_key="test_multiple_clients_Bob",
     )
 
     bob = MockClient(
-        my_keys=("Bob", "Bob"),
-        peer_pub_key="Alice",
+        my_keys=("test_multiple_clients_Bob", "test_multiple_clients_Bob"),
+        peer_pub_key="test_multiple_clients_Alice",
     )
 
     try:

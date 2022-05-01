@@ -84,13 +84,19 @@ class MockClient(Client):
 def test_connection_dropped():
     """Test server's behaviour on connection dropped."""
     # Run a fault client that immediately drops the connection
-    faulty_client = MockClient(("faulty", "faulty"), FaultySessionManager)
+    faulty_client = MockClient(
+        ("test_connection_dropped_faulty", "test_connection_dropped_faulty"),
+        FaultySessionManager,
+    )
     try:
         faulty_client.run()
     except FaultyClientException:
         faulty_client.log.info("Faulty client terminated abruptly")
 
-    good_client = MockClient(("good", "good"), MockSessionManager)
+    good_client = MockClient(
+        ("test_connection_dropped_good", "test_connection_dropped_good"),
+        MockSessionManager,
+    )
     good_client.run()
     good_client.log.info(
         "================== test_connection_dropped: DONE =================="

@@ -38,7 +38,7 @@ class MockClient(Client):
         self.event_loop = asyncio.get_event_loop()
         self._do_logger_config()
 
-        pub_key, priv_key = ("dummy", "dummy")
+        pub_key, priv_key = ("test_basic_connect", "test_basic_connect")
 
         self.log = logging.getLogger("cans-logger")
         self.log.setLevel(logging.DEBUG)
