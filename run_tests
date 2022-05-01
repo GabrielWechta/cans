@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Clean-up after any disgraceful shutdown
+docker-compose down --remove-orphans
+
 echo "Starting the server container..."
 docker-compose up --build --detach cans-server || { echo "Starting the server failed" && exit 1; }
 echo "Server started"

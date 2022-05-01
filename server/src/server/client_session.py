@@ -30,3 +30,11 @@ class ClientSession:
     def pop_one_time_key(self) -> str:
         """Pop double-ratchet one-time key."""
         return self.one_time_keys.pop(list(self.one_time_keys.keys())[0])
+
+    def remaining_keys(self) -> int:
+        """Get the count of remaining one-time keys."""
+        return len(self.one_time_keys)
+
+    def add_one_time_keys(self, keys: Dict[str, str]) -> None:
+        """Append one-time keys."""
+        self.one_time_keys.update(keys)

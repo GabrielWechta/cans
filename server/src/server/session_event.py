@@ -1,6 +1,6 @@
 """Type representing a session event."""
 
-from enum import IntEnum, unique
+from enum import IntEnum, auto, unique
 from typing import Any, Dict, Union
 
 from common.keys import PubKeyDigest
@@ -11,9 +11,10 @@ from common.messages import CansMessage
 class EventType(IntEnum):
     """Session event type."""
 
-    MESSAGE = 0
-    LOGIN = 1
-    LOGOUT = 2
+    MESSAGE = auto()
+    LOGIN = auto()
+    LOGOUT = auto()
+    REPLENISH_KEYS = auto()
 
 
 class SessionEvent:
@@ -51,3 +52,11 @@ class LogoutEvent(SessionEvent):
     def __init__(self, peer_key_digest: PubKeyDigest) -> None:
         """Initialize a logout event."""
         super().__init__(EventType.LOGOUT, {"peer": peer_key_digest})
+
+
+class ReplenishKeysEvent(SessionEvent):
+    """One-time keys replenishment request."""
+
+    def __init__(self, count: int) -> None:
+        """Initialize a key replenishment request."""
+        super().__init__(EventType.REPLENISH_KEYS, {"count": count})

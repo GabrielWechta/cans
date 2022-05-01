@@ -12,10 +12,10 @@ from common.messages import (
     ActiveFriends,
     CansMessage,
     CansMsgId,
-    GetKeyBundleResp,
     PeerLogin,
     PeerLogout,
     PeerUnavailable,
+    ReplenishOneTimeKeysReq,
     cans_recv,
     cans_send,
 )
@@ -27,6 +27,7 @@ from .session_event import (
     LoginEvent,
     LogoutEvent,
     MessageEvent,
+    ReplenishKeysEvent,
     SessionEvent,
 )
 
@@ -38,6 +39,9 @@ class SessionManager:
     client's public keys and event queues corresponding
     to their sessions.
     """
+
+    MAX_ONE_TIME_KEYS = 10
+    ONE_TIME_KEYS_REPLENISH_THRESHOLD = MAX_ONE_TIME_KEYS // 2
 
     def __init__(self) -> None:
         """Construct a session manager instance."""
@@ -52,6 +56,7 @@ class SessionManager:
             EventType.MESSAGE: self.__handle_event_message,
             EventType.LOGIN: self.__handle_event_login,
             EventType.LOGOUT: self.__handle_event_logout,
+            EventType.REPLENISH_KEYS: self.__handle_event_replenish_keys,
         }
 
     async def authed_user_entry(
@@ -93,7 +98,7 @@ class SessionManager:
                 peer_session = self.sessions[friend]
                 active_friends[friend] = (
                     peer_session.identity_key,
-                    peer_session.pop_one_time_key(),
+                    await self.__rotate_one_time_keys(peer_session),
                 )
 
         active_friends_notification = ActiveFriends(
@@ -152,8 +157,10 @@ class SessionManager:
             if self.__upstream_message_valid(message, session):
                 sender = message.header.sender
                 receiver = message.header.receiver
+                msg_id = message.header.msg_id
                 self.log.debug(
-                    f"Handling upstream message from {sender} to {receiver}"
+                    f"Handling upstream message {msg_id} from"
+                    + f" {sender} to {receiver}"
                 )
 
                 if self.__is_user_message(message):
@@ -174,22 +181,16 @@ class SessionManager:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle a control message from the user."""
-        if message.header.msg_id == CansMsgId.GET_KEY_BUNDLE_REQ:
-            # Handle key bundle request
-            peer = message.payload["peer"]
-            if peer in self.sessions.keys():
-                # Create the response
-                response = GetKeyBundleResp(
-                    receiver=message.header.sender,
-                    identity_key=self.sessions[peer].identity_key,
-                    one_time_key=self.sessions[peer].pop_one_time_key(),
-                )
-                # Send the response back to client
-                await self.__route_message(response)
-
-            else:
-                self.log.error(f"Requested key bundle for offline user {peer}")
-
+        if message.header.msg_id == CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP:
+            # Handle one-time key replenishment response
+            keys = message.payload["keys"]
+            self.log.debug(
+                f"User '{session.public_key_digest}' replenished"
+                + f" {len(keys)} one-time keys"
+            )
+            # TODO: Is any validation of the keys needed? This is authenticated
+            # user and the keys are not used by the server, so likely not...
+            session.add_one_time_keys(keys)
         else:
             self.log.error(
                 "Received unsupported control message:"
@@ -285,7 +286,7 @@ class SessionManager:
         peer = payload["peer"]
         peer_key_bundle = (
             self.sessions[peer].identity_key,
-            self.sessions[peer].pop_one_time_key(),
+            await self.__rotate_one_time_keys(self.sessions[peer]),
         )
         # Wrap the event in a CANS message and send downstream to the client
         message = PeerLogin(
@@ -305,6 +306,18 @@ class SessionManager:
         message = PeerLogout(session.public_key_digest, payload["peer"])
         await cans_send(message, session.connection)
 
+    async def __handle_event_replenish_keys(
+        self, event: SessionEvent, session: ClientSession
+    ) -> None:
+        """Handle session event of type REPLENISH_KEYS."""
+        assert isinstance(event.payload, dict)
+        payload: Dict[str, Any] = event.payload
+        # Wrap the event in a CANS message and send downstream to the client
+        message = ReplenishOneTimeKeysReq(
+            session.public_key_digest, payload["count"]
+        )
+        await cans_send(message, session.connection)
+
     async def __send_event(
         self, event: SessionEvent, session: ClientSession
     ) -> None:
@@ -314,3 +327,24 @@ class SessionManager:
     async def __get_event(self, session: ClientSession) -> SessionEvent:
         """Receive an event."""
         return await session.event_queue.get()
+
+    async def __rotate_one_time_keys(self, session: ClientSession) -> str:
+        """Pop peer's one-time key and request replenishment."""
+        # TODO: Properly handle a race condition when no keys are available
+        key = session.pop_one_time_key()
+
+        self.log.debug(
+            f"Popping one-time key of user '{session.public_key_digest}'..."
+        )
+
+        if session.remaining_keys() < self.ONE_TIME_KEYS_REPLENISH_THRESHOLD:
+            self.log.debug(
+                "Requesting a replenishment of keys of user"
+                + f"'{session.public_key_digest}'..."
+            )
+            # If too few keys remaining on the server, request a replenishment
+            event = ReplenishKeysEvent(
+                self.MAX_ONE_TIME_KEYS - session.remaining_keys()
+            )
+            await self.__send_event(event, session)
+        return key
