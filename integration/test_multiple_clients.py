@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 
+import pytest
 from olm import Account
 
 from client import Client
@@ -100,11 +101,7 @@ def test_multiple_clients():
         peer_pub_key="Alice",
     )
 
-    try:
+    with pytest.raises(MultipleClientsSuccess):
         asyncio.get_event_loop().run_until_complete(
             asyncio.gather(alice.run(), bob.run())
-        )
-    except MultipleClientsSuccess:
-        alice.log.info(
-            "================== test_multiple_clients: DONE =================="
         )

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 
+import pytest
 from olm import Account
 
 from client import Client
@@ -74,21 +75,21 @@ async def impl_test_key_replenishment():
     # Start running the Alice client in the background
     alice_future = alice.run()
 
-    try:
-        for i in range(8):
-            # Run a couple of peers in the background to
-            # deplete Alice's one-time keys
-            peer = MockClient(
-                my_keys=(f"Peer_{i}", f"Peer_{i}"),
-                peer_pub_key="Alice",
-            )
-            asyncio.create_task(peer.run())
-        timeout = 5
-        await asyncio.wait_for(alice_future, timeout)
-    except KeyReplenishmentSuccess:
-        pass
+    for i in range(8):
+        # Run a couple of peers in the background to
+        # deplete Alice's one-time keys
+        peer = MockClient(
+            my_keys=(f"Peer_{i}", f"Peer_{i}"),
+            peer_pub_key="Alice",
+        )
+        asyncio.create_task(peer.run())
+    timeout = 5
+    await asyncio.wait_for(alice_future, timeout)
 
 
 def test_key_replenishment():
     """Test one-time keys replenishment."""
-    asyncio.get_event_loop().run_until_complete(impl_test_key_replenishment())
+    with pytest.raises(KeyReplenishmentSuccess):
+        asyncio.get_event_loop().run_until_complete(
+            impl_test_key_replenishment()
+        )

@@ -92,6 +92,3 @@ def test_connection_dropped():
 
     good_client = MockClient(("good", "good"), MockSessionManager)
     good_client.run()
-    good_client.log.info(
-        "================== test_connection_dropped: DONE =================="
-    )
