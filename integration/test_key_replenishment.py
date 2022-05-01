@@ -1,4 +1,4 @@
-"""Test concurrent connection of multiple users."""
+"""Test replenishing one-time keys."""
 
 import asyncio
 import logging
@@ -73,7 +73,7 @@ async def impl_test_key_replenishment():
     )
 
     # Start running the Alice client in the background
-    alice_future = alice.run()
+    alice_future = asyncio.create_task(alice.run())
 
     for i in range(8):
         # Run a couple of peers in the background to
