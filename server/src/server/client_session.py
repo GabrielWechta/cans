@@ -26,6 +26,8 @@ class ClientSession:
         self.subscriptions = subscriptions
         self.identity_key = identity_key
         self.one_time_keys = one_time_keys
+        self.hostname = conn.remote_address[0]
+        self.port = conn.remote_address[1]
 
     def pop_one_time_key(self) -> str:
         """Pop double-ratchet one-time key."""
