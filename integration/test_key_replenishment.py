@@ -13,7 +13,7 @@ from common.keys import KeyPair, PubKey
 from common.messages import CansMessage
 
 
-class KeyReplenishmentSuccess(Exception):
+class KeyReplenishmentOkException(Exception):
     """Dummy exception raised to gracefully exit the event loop."""
 
     ...
@@ -30,7 +30,7 @@ class MockSessionManager(SessionManager):
         self.log.debug(
             f"Successfully received a request to replenish {count} keys"
         )
-        raise KeyReplenishmentSuccess()
+        raise KeyReplenishmentOkException()
 
 
 class MockClient(Client):
@@ -89,7 +89,7 @@ async def impl_test_key_replenishment():
 
 def test_key_replenishment():
     """Test one-time keys replenishment."""
-    with pytest.raises(KeyReplenishmentSuccess):
+    with pytest.raises(KeyReplenishmentOkException):
         asyncio.get_event_loop().run_until_complete(
             impl_test_key_replenishment()
         )

@@ -1,4 +1,4 @@
-"""Test server connection and handshake."""
+"""Test server recovery from connection dropped."""
 
 import asyncio
 import logging
@@ -53,7 +53,7 @@ class MockClient(Client):
     """Mock client."""
 
     def __init__(
-        self, keys: KeyPair, session_manager_factory: Callable
+        self, keys: KeyPair, session_manager_constructor: Callable
     ) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -66,7 +66,7 @@ class MockClient(Client):
         self.log.setLevel(logging.DEBUG)
 
         account = Account()
-        self.session_manager = session_manager_factory(
+        self.session_manager = session_manager_constructor(
             keys=keys, account=account
         )
 
@@ -84,11 +84,17 @@ class MockClient(Client):
 def test_connection_dropped():
     """Test server's behaviour on connection dropped."""
     # Run a fault client that immediately drops the connection
-    faulty_client = MockClient(("faulty", "faulty"), FaultySessionManager)
+    faulty_client = MockClient(
+        ("test_connection_dropped_faulty", "test_connection_dropped_faulty"),
+        FaultySessionManager,
+    )
     try:
         faulty_client.run()
     except FaultyClientException:
         faulty_client.log.info("Faulty client terminated abruptly")
 
-    good_client = MockClient(("good", "good"), MockSessionManager)
+    good_client = MockClient(
+        ("test_connection_dropped_good", "test_connection_dropped_good"),
+        MockSessionManager,
+    )
     good_client.run()

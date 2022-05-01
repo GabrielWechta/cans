@@ -12,7 +12,7 @@ from client.session_manager_client import SessionManager
 from common.keys import KeyPair, PubKey
 
 
-class MultipleClientsSuccess(Exception):
+class MultipleClientsOkException(Exception):
     """Dummy exception raised to gracefully exit the event loop."""
 
     ...
@@ -64,7 +64,7 @@ class MockClient(Client):
 
         # TODO: Fix handling outbound sessions being created by both
         # both parties concurrently and remove this
-        if "Bob" == self.test_peer:
+        if "test_multiple_clients_Bob" == self.test_peer:
             self.log.debug("Alice sleeping additional 2 seconds...")
             await asyncio.sleep(2)
 
@@ -81,7 +81,7 @@ class MockClient(Client):
                 f"Received message {message.payload}"
                 + f" from {message.header.sender}"
             )
-            raise MultipleClientsSuccess()
+            raise MultipleClientsOkException()
         except asyncio.exceptions.TimeoutError as e:
             self.log.error(
                 f"Timed out while waiting for a message from {self.test_peer}!"
@@ -92,16 +92,16 @@ class MockClient(Client):
 def test_multiple_clients():
     """Test running multiple users."""
     alice = MockClient(
-        my_keys=("Alice", "Alice"),
-        peer_pub_key="Bob",
+        my_keys=("test_multiple_clients_Alice", "test_multiple_clients_Alice"),
+        peer_pub_key="test_multiple_clients_Bob",
     )
 
     bob = MockClient(
-        my_keys=("Bob", "Bob"),
-        peer_pub_key="Alice",
+        my_keys=("test_multiple_clients_Bob", "test_multiple_clients_Bob"),
+        peer_pub_key="test_multiple_clients_Alice",
     )
 
-    with pytest.raises(MultipleClientsSuccess):
+    with pytest.raises(MultipleClientsOkException):
         asyncio.get_event_loop().run_until_complete(
             asyncio.gather(alice.run(), bob.run())
         )
