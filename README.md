@@ -41,6 +41,12 @@
 
 ## Contributing for Devs
 
+### Install dependencies
+
+```bash
+./bootstrap
+```
+
 ### Install pre-commit hooks
 
 ```bash

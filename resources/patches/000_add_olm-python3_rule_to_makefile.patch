@@ -1,0 +1,4 @@
+5a6,8
+> olm-python3: headers
+> 	DEVELOP=$(DEVELOP) python3 setup.py build
+>
