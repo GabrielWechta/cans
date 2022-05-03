@@ -19,7 +19,13 @@ from server.session_upstream_handler import SessionUpstreamHandler
 
 from .client_session import ClientSession
 from .database_manager_server import DatabaseManager
-from .session_event import LoginEvent, LogoutEvent, MessageEvent, SessionEvent
+from .session_event import (
+    LoginEvent,
+    LogoutEvent,
+    MessageEvent,
+    ReplenishKeysEvent,
+    SessionEvent,
+)
 
 
 class SessionManager:
@@ -29,6 +35,9 @@ class SessionManager:
     client's public keys and event queues corresponding
     to their sessions.
     """
+
+    MAX_ONE_TIME_KEYS = 10
+    ONE_TIME_KEYS_REPLENISH_THRESHOLD = MAX_ONE_TIME_KEYS // 2
 
     def __init__(self) -> None:
         """Construct a session manager instance."""
@@ -40,10 +49,10 @@ class SessionManager:
         self.database_manager = DatabaseManager()
 
         # Instantiate the traffic handlers
-        self.downstream_handler = SessionDownstreamHandler(self.sessions)
-        self.upstream_handler = SessionUpstreamHandler(
-            self.sessions, self.__route_message
+        self.downstream_handler = SessionDownstreamHandler(
+            self.sessions, self.__get_one_time_key
         )
+        self.upstream_handler = SessionUpstreamHandler(self.__route_message)
 
     async def authed_user_entry(
         self,
@@ -85,6 +94,63 @@ class SessionManager:
         except ConnectionClosed as e:
             await self.__handle_connection_closed(public_key_digest, e)
 
+    async def __route_message(self, message: CansMessage) -> None:
+        """Route the message to the receiver."""
+        sender = message.header.sender
+        receiver = message.header.receiver
+        self.log.debug(f"Routing message from '{sender}' to '{receiver}'")
+
+        if receiver in self.sessions.keys():
+            # Wrap the message in an event and
+            # send it to the appropriate receiver
+            self.log.debug(
+                f"Receiver '{receiver}' online." + " Sending event..."
+            )
+            event = MessageEvent(message)
+            await self.__send_event(event, self.sessions[receiver])
+        elif sender:
+            # Do not reroute server messages so as to not get
+            # into an infinite recursion
+
+            # TODO: Include a cookie or send back the user message
+            # so that the client can try resending or otherwise
+            # respond appropriately
+            notification = PeerUnavailable(receiver=sender, peer=receiver)
+            self.log.debug(
+                f"Receiver '{receiver}' not available."
+                + " Sending notification back to"
+                + f" '{sender}'..."
+            )
+            await self.__route_message(notification)
+        else:
+            # Drop orphaned server message
+            self.log.warning(
+                f"Dropped server message {message.header.msg_id}"
+                + f" destined to {message.header.receiver}"
+            )
+
+    async def __get_one_time_key(self, client: PubKeyDigest) -> str:
+        """Pop peer's one-time key and request replenishment."""
+        session = self.sessions[client]
+        # TODO: Properly handle a race condition when no keys are available
+        key = session.pop_one_time_key()
+
+        self.log.debug(
+            f"Popping one-time key of user '{session.public_key_digest}'..."
+        )
+
+        if session.remaining_keys() < self.ONE_TIME_KEYS_REPLENISH_THRESHOLD:
+            self.log.debug(
+                "Requesting a replenishment of keys of user"
+                + f"'{session.public_key_digest}'..."
+            )
+            # If too few keys remaining on the server, request a replenishment
+            event = ReplenishKeysEvent(
+                self.MAX_ONE_TIME_KEYS - session.remaining_keys()
+            )
+            await self.__send_event(event, session)
+        return key
+
     async def __handle_active_friends_notification(
         self, session: ClientSession
     ) -> None:
@@ -93,10 +159,9 @@ class SessionManager:
         active_friends: Dict[PubKeyDigest, PublicKeysBundle] = {}
         for friend in session.subscriptions:
             if friend in self.sessions.keys():
-                peer_session = self.sessions[friend]
                 active_friends[friend] = (
-                    peer_session.identity_key,
-                    peer_session.pop_one_time_key(),
+                    self.sessions[friend].identity_key,
+                    await self.__get_one_time_key(friend),
                 )
 
         active_friends_notification = ActiveFriends(
@@ -133,41 +198,6 @@ class SessionManager:
             )
             await self.database_manager.add_subscriber_of(
                 peer, public_key_digest
-            )
-
-    async def __route_message(self, message: CansMessage) -> None:
-        """Route the message to the receiver."""
-        sender = message.header.sender
-        receiver = message.header.receiver
-        self.log.debug(f"Routing message from '{sender}' to '{receiver}'")
-
-        if receiver in self.sessions.keys():
-            # Wrap the message in an event and
-            # send it to the appropriate receiver
-            self.log.debug(
-                f"Receiver '{receiver}' online." + " Sending event..."
-            )
-            event = MessageEvent(message)
-            await self.__send_event(event, self.sessions[receiver])
-        elif sender:
-            # Do not reroute server messages so as to not get
-            # into an infinite recursion
-
-            # TODO: Include a cookie or send back the user message
-            # so that the client can try resending or otherwise
-            # respond appropriately
-            notification = PeerUnavailable(receiver=sender, peer=receiver)
-            self.log.debug(
-                f"Receiver '{receiver}' not available."
-                + " Sending notification back to"
-                + f" '{sender}'..."
-            )
-            await self.__route_message(notification)
-        else:
-            # Drop orphaned server message
-            self.log.warning(
-                f"Dropped server message {message.header.msg_id}"
-                + f" destined to {message.header.receiver}"
             )
 
     async def __handle_connection_closed(

@@ -1,6 +1,6 @@
 """Define CANS message formats."""
 
-from enum import IntEnum, unique
+from enum import IntEnum, auto, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
 from typing import Any, Dict, List, Optional, Union
 
@@ -16,21 +16,24 @@ CansSerial = str
 class CansMsgId(IntEnum):
     """CANS message ID."""
 
-    USER_MESSAGE = 0
-    SERVER_HELLO = 1
-    PEER_LOGIN = 2
-    PEER_LOGOUT = 3
-    ADD_SUBSCRIPTION = 4
-    REMOVE_SUBSCRIPTION = 5
-    ADD_BLACKLIST = 6
-    REMOVE_BLACKLIST = 7
-    SHARE_CONTACTS = 8
-    PEER_UNAVAILABLE = 9  # TODO: Remove this
-    ACTIVE_FRIENDS = 10
-    GET_KEY_BUNDLE_REQ = 11
-    GET_KEY_BUNDLE_RESP = 12
-    REPLENISH_ONE_TIME_KEYS_REQ = 13
-    REPLENISH_ONE_TIME_KEYS_RESP = 14
+    # User traffic
+    USER_MESSAGE = auto()
+    SHARE_CONTACTS = auto()
+
+    # Client-server handshake
+    SERVER_HELLO = auto()
+    ACTIVE_FRIENDS = auto()
+
+    # Miscellaneous client-server API
+    PEER_LOGIN = auto()
+    PEER_LOGOUT = auto()
+    ADD_SUBSCRIPTION = auto()
+    REMOVE_SUBSCRIPTION = auto()
+    ADD_BLACKLIST = auto()
+    REMOVE_BLACKLIST = auto()
+    PEER_UNAVAILABLE = auto()  # TODO: Remove this
+    REPLENISH_ONE_TIME_KEYS_REQ = auto()
+    REPLENISH_ONE_TIME_KEYS_RESP = auto()
 
 
 class CansMessage:
@@ -185,34 +188,6 @@ class ActiveFriends(CansMessage):
         self.payload = {"friends": active_friends}
 
 
-class GetKeyBundleReq(CansMessage):
-    """Request peer's double-ratched key bundle."""
-
-    def __init__(self, peer: PubKeyDigest) -> None:
-        """Create a key bundle request."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_REQ
-        self.header.receiver = None
-        self.payload = {"peer": peer}
-
-
-class GetKeyBundleResp(CansMessage):
-    """Send double-ratched key bundle back to the requestor."""
-
-    def __init__(
-        self, receiver: PubKeyDigest, identity_key: str, one_time_key: str
-    ) -> None:
-        """Create a key bundle response."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.GET_KEY_BUNDLE_RESP
-        self.header.sender = None
-        self.header.receiver = receiver
-        self.payload = {
-            "identity_key": identity_key,
-            "one_time_key": one_time_key,
-        }
-
-
 class ReplenishOneTimeKeysReq(CansMessage):
     """Send replenish one time keys request to the client."""
 
@@ -223,7 +198,7 @@ class ReplenishOneTimeKeysReq(CansMessage):
         self.header.sender = None
         self.header.receiver = receiver
         self.payload = {
-            "one_time_keys_num": one_time_keys_num,
+            "count": one_time_keys_num,
         }
 
 
@@ -236,7 +211,7 @@ class ReplenishOneTimeKeysResp(CansMessage):
         self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
         self.header.receiver = None
         self.payload = {
-            "one_time_keys": one_time_keys,
+            "keys": one_time_keys,
         }
 
 

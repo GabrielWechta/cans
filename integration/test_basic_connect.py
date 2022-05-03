@@ -64,6 +64,3 @@ def test_basic_connect():
     """Test connecting to the server."""
     client = MockClient()
     client.run()
-    client.log.info(
-        "================== test_basic_connect: DONE =================="
-    )

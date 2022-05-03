@@ -125,13 +125,14 @@ class SessionManager:
         """Shake hands with the server."""
         # Send server hello
         identity_key = self.account.identity_keys["curve25519"]
-        one_time_keys = self.tdh_interface.get_one_time_keys(3)
+        one_time_keys = self.tdh_interface.get_one_time_keys(10)
         hello = ServerHello(
             public_key=self.public_key,
             subscriptions=friends,
             identity_key=identity_key,
             one_time_keys=one_time_keys,
         )
+        hello.sender = self.identity
         await cans_send(hello, conn)
 
         # Receive the active friends list
@@ -231,14 +232,15 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
-        one_time_keys_num = message.payload["one_time_keys_num"]
+        one_time_keys_num = message.payload["count"]
 
         # one time keys are right away marked as published
         one_time_keys = self.tdh_interface.get_one_time_keys(
             number_of_keys=one_time_keys_num
         )
         rep_otk_resp = ReplenishOneTimeKeysResp(one_time_keys=one_time_keys)
-        await self.upstream_message_queue.put(rep_otk_resp)
+        rep_otk_resp.sender = self.identity
+        await self.send_message(rep_otk_resp)
 
     def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
         """Transform potential session into an active outbound session."""

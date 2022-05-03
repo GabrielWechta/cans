@@ -1,4 +1,4 @@
-"""Test server connection and handshake."""
+"""Test server recovery from connection dropped."""
 
 import asyncio
 import logging
@@ -53,7 +53,7 @@ class MockClient(Client):
     """Mock client."""
 
     def __init__(
-        self, keys: KeyPair, session_manager_factory: Callable
+        self, keys: KeyPair, session_manager_constructor: Callable
     ) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -66,7 +66,7 @@ class MockClient(Client):
         self.log.setLevel(logging.DEBUG)
 
         account = Account()
-        self.session_manager = session_manager_factory(
+        self.session_manager = session_manager_constructor(
             keys=keys, account=account
         )
 
@@ -98,6 +98,3 @@ def test_connection_dropped():
         MockSessionManager,
     )
     good_client.run()
-    good_client.log.info(
-        "================== test_connection_dropped: DONE =================="
-    )

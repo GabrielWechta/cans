@@ -1,10 +1,16 @@
 """Downstream traffic handler."""
 
 import logging
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from common.keys import PubKeyDigest
-from common.messages import CansMessage, PeerLogin, PeerLogout, cans_send
+from common.messages import (
+    CansMessage,
+    PeerLogin,
+    PeerLogout,
+    ReplenishOneTimeKeysReq,
+    cans_send,
+)
 from server.client_session import ClientSession
 
 from .session_event import EventType, SessionEvent
@@ -17,16 +23,23 @@ class SessionDownstreamHandler:
     from the server to the client.
     """
 
-    def __init__(self, sessions: Dict[PubKeyDigest, ClientSession]) -> None:
+    def __init__(
+        self,
+        sessions: Dict[PubKeyDigest, ClientSession],
+        get_one_time_key_callback: Callable,
+    ) -> None:
         """Construct the downstream handler."""
         self.log = logging.getLogger("cans-logger")
-        # Keep reference to the managed sessions
+        # Store a reference to the managed sessions
         self.sessions = sessions
+        # Store a reference to the parent session manager
+        self.get_one_time_key = get_one_time_key_callback
         # Set up event handlers
         self.event_handlers = {
             EventType.MESSAGE: self.__handle_event_message,
             EventType.LOGIN: self.__handle_event_login,
             EventType.LOGOUT: self.__handle_event_logout,
+            EventType.REPLENISH_KEYS: self.__handle_event_replenish_keys,
         }
 
     async def handle_downstream(self, session: ClientSession) -> None:
@@ -64,7 +77,7 @@ class SessionDownstreamHandler:
         peer = payload["peer"]
         peer_key_bundle = (
             self.sessions[peer].identity_key,
-            self.sessions[peer].pop_one_time_key(),
+            await self.get_one_time_key(peer),
         )
         # Wrap the event in a CANS message and send downstream to the client
         message = PeerLogin(
@@ -82,6 +95,18 @@ class SessionDownstreamHandler:
         payload: Dict[str, Any] = event.payload
         # Wrap the event in a CANS message and send downstream to the client
         message = PeerLogout(session.public_key_digest, payload["peer"])
+        await cans_send(message, session.connection)
+
+    async def __handle_event_replenish_keys(
+        self, event: SessionEvent, session: ClientSession
+    ) -> None:
+        """Handle session event of type REPLENISH_KEYS."""
+        assert isinstance(event.payload, dict)
+        payload: Dict[str, Any] = event.payload
+        # Wrap the event in a CANS message and send downstream to the client
+        message = ReplenishOneTimeKeysReq(
+            session.public_key_digest, payload["count"]
+        )
         await cans_send(message, session.connection)
 
     async def __get_event(self, session: ClientSession) -> SessionEvent:

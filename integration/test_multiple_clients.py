@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 
+import pytest
 from olm import Account
 
 from client import Client
@@ -11,7 +12,7 @@ from client.session_manager_client import SessionManager
 from common.keys import KeyPair, PubKey
 
 
-class MultipleClientsSuccess(Exception):
+class MultipleClientsOkException(Exception):
     """Dummy exception raised to gracefully exit the event loop."""
 
     ...
@@ -80,7 +81,7 @@ class MockClient(Client):
                 f"Received message {message.payload}"
                 + f" from {message.header.sender}"
             )
-            raise MultipleClientsSuccess()
+            raise MultipleClientsOkException()
         except asyncio.exceptions.TimeoutError as e:
             self.log.error(
                 f"Timed out while waiting for a message from {self.test_peer}!"
@@ -100,11 +101,7 @@ def test_multiple_clients():
         peer_pub_key="test_multiple_clients_Alice",
     )
 
-    try:
+    with pytest.raises(MultipleClientsOkException):
         asyncio.get_event_loop().run_until_complete(
             asyncio.gather(alice.run(), bob.run())
-        )
-    except MultipleClientsSuccess:
-        alice.log.info(
-            "================== test_multiple_clients: DONE =================="
         )

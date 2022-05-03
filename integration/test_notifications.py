@@ -15,7 +15,7 @@ from common.keys import KeyPair, PubKey
 from common.messages import CansMessage, CansMsgId
 
 
-class NotificationsSuccess(Exception):
+class NotificationsOkException(Exception):
     """Dummy exception raised to gracefully exit the event loop."""
 
     ...
@@ -44,7 +44,7 @@ class MockClient(Client):
         self,
         my_keys: KeyPair,
         peer_pub_key: PubKey,
-        session_manager_factory: Callable,
+        session_manager_constructor: Callable,
     ) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -59,7 +59,7 @@ class MockClient(Client):
         self.log.setLevel(logging.DEBUG)
 
         account = Account()
-        self.session_manager = session_manager_factory(
+        self.session_manager = session_manager_constructor(
             keys=my_keys,
             account=account,
         )
@@ -86,7 +86,7 @@ class MockClient(Client):
                 login_notif_received = True
             if message.header.msg_id == CansMsgId.PEER_LOGOUT:
                 if login_notif_received:
-                    raise NotificationsSuccess()
+                    raise NotificationsOkException()
                 else:
                     self.log.error("Received PEER_LOGOUT but no PEER_LOGIN")
 
@@ -96,7 +96,7 @@ async def impl_test_notifications():
     alice = MockClient(
         my_keys=("Alice", "Alice"),
         peer_pub_key="Bob",
-        session_manager_factory=SessionManager,
+        session_manager_constructor=SessionManager,
     )
 
     # Start running the Alice client in the background
@@ -109,7 +109,7 @@ async def impl_test_notifications():
     bob = MockClient(
         my_keys=("Bob", "Bob"),
         peer_pub_key="Alice",
-        session_manager_factory=MockSessionManager,
+        session_manager_constructor=MockSessionManager,
     )
     asyncio.create_task(bob.run())
 
@@ -118,5 +118,5 @@ async def impl_test_notifications():
 
 def test_notifications():
     """Test login/logout notifications."""
-    with pytest.raises(NotificationsSuccess):
+    with pytest.raises(NotificationsOkException):
         asyncio.get_event_loop().run_until_complete(impl_test_notifications())

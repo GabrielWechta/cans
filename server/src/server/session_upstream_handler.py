@@ -1,9 +1,8 @@
 """Upstream traffic handler."""
 
 import logging
-from typing import Callable, Dict
+from typing import Callable
 
-from common.keys import PubKeyDigest
 from common.messages import CansMessage, CansMsgId, cans_recv
 from server.client_session import ClientSession
 
@@ -15,20 +14,18 @@ class SessionUpstreamHandler:
     from the client to the server.
     """
 
-    def __init__(
-        self,
-        sessions: Dict[PubKeyDigest, ClientSession],
-        cans_router: Callable,
-    ) -> None:
+    def __init__(self, route_message_callback: Callable) -> None:
         """Construct the upstream handler."""
         self.log = logging.getLogger("cans-logger")
-        # Store a router callback if downstream routing is needed
-        self.route_message = cans_router
-        # Keep reference to the managed sessions
-        self.sessions = sessions
+        # Store a callback for routing messages between handlers
+        self.route_message = route_message_callback
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self.__handle_message_user_message,
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
+            # fmt: off
+            CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP:
+                self.__handle_message_replenish_one_time_keys_req,
+            # fmt: on
         }
 
     async def handle_upstream(self, session: ClientSession) -> None:
@@ -72,6 +69,19 @@ class SessionUpstreamHandler:
         """Handle message type SHARE_CONTACTS."""
         # User traffic - just route it
         await self.route_message(message)
+
+    async def __handle_message_replenish_one_time_keys_req(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
+        keys = message.payload["keys"]
+        self.log.debug(
+            f"User '{session.public_key_digest}' replenished"
+            + f" {len(keys)} one-time keys"
+        )
+        # TODO: Is any validation of the keys needed? This is authenticated
+        # user and the keys are not used by the server, so likely not...
+        session.add_one_time_keys(keys)
 
     def __upstream_message_valid(
         self, message: CansMessage, session: ClientSession
