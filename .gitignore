@@ -143,8 +143,8 @@ log/
 # Ignore vscode
 .vscode/
 
-# Quick fix for olm
-!resources/olm/lib
+# Ignore olm repository
+resources/olm
 
 # ignore custom fish scipts
 *.fish

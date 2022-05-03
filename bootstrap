@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+OLM_URI=https://gitlab.matrix.org/matrix-org/olm.git
+OLM_TAG=3.2.11
+OLM_DIR=resources/olm
+
+echo "Cloning olm repository..."
+git clone ${OLM_URI} -b ${OLM_TAG} ${OLM_DIR}
+
+echo "Patching olm-python3 Makefile..."
+patch resources/olm/python/Makefile resources/patches/000_add_olm-python3_rule_to_makefile.patch
