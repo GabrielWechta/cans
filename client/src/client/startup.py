@@ -5,6 +5,9 @@ import hashlib
 import subprocess
 from os import mkdir, path
 from pathlib import Path
+from shutil import rmtree
+
+from olm import Account
 
 from common.keys import KeyPair
 
@@ -24,18 +27,38 @@ class Startup:
         self.db_path = self._home_dir / "user_data.db"
         self.user_public_key_path = self._keys_dir / "pub.pem"
         self.user_private_key_path = self._keys_dir / "priv.pem"
+        self.crypto_account_path = self._home_dir / "crypto_account"
 
     def cans_setup(self) -> None:
         """Create all necessary directories."""
+        rmtree(path=self._home_dir, ignore_errors=True)
         mkdir(self._home_dir, mode=0o700)
         mkdir(self._keys_dir, mode=0o700)
 
     def is_first_startup(self) -> bool:
         """Check if user's RSA KeyPair exists."""
-        pub_key = path.isfile(self.user_public_key_path)
-        priv_key = path.isfile(self.user_private_key_path)
+        pub_key_exists = path.isfile(self.user_public_key_path)
+        priv_key_exists = path.isfile(self.user_private_key_path)
+        crypto_account_exists = path.isfile(self.crypto_account_path)
 
-        return not (pub_key and priv_key)
+        return not (
+            pub_key_exists and priv_key_exists and crypto_account_exists
+        )
+
+    def create_crypto_account(self, passphrase: str) -> Account:
+        """Create a libolm Account() object and store it."""
+        account = Account()
+        pickled = account.pickle(passphrase)
+        with open(self.crypto_account_path, "wb") as fd:
+            fd.write(pickled)
+        return account
+
+    def load_crypto_account(self, passphrase: str) -> Account:
+        """Load an existing libolm Account() object."""
+        with open(self.crypto_account_path, "rb") as fd:
+            pickled = fd.read()
+            account = Account.from_pickle(pickled, passphrase)
+            return account
 
     def _hardware_fingerprint(self) -> str:
         """Derive a fingerprint from system hardware.
