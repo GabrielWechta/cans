@@ -6,7 +6,6 @@ import logging.handlers
 import os
 
 from blessed import Terminal
-from olm import Account
 
 from common.keys import digest_key
 from common.messages import CansMsgId
@@ -41,12 +40,14 @@ class Client:
             self.pub_key, self.priv_key = self.startup.generate_key_pair(
                 self.password
             )
+            self.account = self.startup.create_crypto_account(self.password)
         else:
             user_passphrase = "SafeAndSecurePassword2137"
             self.password = self.startup.get_password(user_passphrase)
             self.pub_key, self.priv_key = self.startup.decrypt_key_pair(
                 self.password
             )
+            self.account = self.startup.load_crypto_account(self.password)
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()
@@ -79,13 +80,9 @@ class Client:
         self.ui.view.add_chat(echo_client)
         # self.ui.view.add_chat(offline_client)
 
-        # TODO: During early startup pickled olm.Account should be un-pickled
-        #       and passed to TripleDiffieHellmanInterface and SessionManager
-        account = Account()
-
         self.session_manager = SessionManager(
             keys=(pub_key, priv_key),
-            account=account,
+            account=self.account,
         )
 
     def run(self) -> None:
