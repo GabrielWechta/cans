@@ -3,39 +3,27 @@
 import asyncio
 import logging
 import ssl
-from typing import Dict, List
+from typing import List
 
 import websockets.client as ws
-from olm import Account, OlmMessage, OlmPreKeyMessage
+from olm import Account, OlmMessage
 
 from common.keys import KeyPair, PubKeyDigest, digest_key
 from common.messages import (
     ActiveFriends,
     CansMessage,
     CansMsgId,
+    PeerHello,
     ReplenishOneTimeKeysResp,
     ServerHello,
+    SessionEstablished,
     UserMessage,
     cans_recv,
     cans_send,
 )
 
-from .e2e_encryption import DoubleRatchetSession, TripleDiffieHellmanInterface
-
-
-class ActiveSession(DoubleRatchetSession):
-    """Interface for SessionManager convenience."""
-
-    pass
-
-
-class PotentialSession:
-    """Utility mapping friends pub_keys on (id_keys, ot_keys)."""
-
-    def __init__(self, identity_key: str, one_time_key: str):
-        """Construct easy way of finding public bundle."""
-        self.identity_key = identity_key
-        self.one_time_key = one_time_key
+from .e2e_encryption import TripleDiffieHellmanInterface
+from .sessions_state_machine import SessionsStateMachine
 
 
 class SessionManager:
@@ -53,8 +41,7 @@ class SessionManager:
         """Construct a session manager instance."""
         self.account = account
         self.tdh_interface = TripleDiffieHellmanInterface(account=self.account)
-        self.active_sessions: Dict[PubKeyDigest, ActiveSession] = {}
-        self.potential_sessions: Dict[PubKeyDigest, PotentialSession] = {}
+        self.state_machine = SessionsStateMachine(account=self.account)
 
         self.public_key, self.private_key = keys
         self.identity = digest_key(keys[0])
@@ -62,13 +49,16 @@ class SessionManager:
         self.log = logging.getLogger("cans-logger")
 
         self.message_handlers = {
-            CansMsgId.USER_MESSAGE: self._handle_message_user,
+            CansMsgId.USER_MESSAGE: self._handle_message_user_message,
+            CansMsgId.PEER_HELLO: self._handle_message_peer_hello,
             CansMsgId.PEER_UNAVAILABLE: self._handle_message_peer_unavailable,
             CansMsgId.PEER_LOGIN: self._handle_message_peer_login,
             CansMsgId.PEER_LOGOUT: self._handle_message_peer_logout,
             # fmt: off
             CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ:
                 self._handle_message_replenish_one_time_keys_req,
+            CansMsgId.SESSION_ESTABLISHED:
+                self._handle_message_session_established,
             # fmt: on
         }
         self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
@@ -144,8 +134,10 @@ class SessionManager:
             public_key_bundle,
         ) in active_friends_message.payload["friends"].items():
             identity_key, one_time_key = public_key_bundle
-            self.potential_sessions[pub_key_digest] = PotentialSession(
-                identity_key=identity_key, one_time_key=one_time_key
+            self.state_machine.add_potential_session(
+                peer=pub_key_digest,
+                identity_key=identity_key,
+                one_time_key=one_time_key,
             )
 
     async def _handle_upstream(self, conn: ws.WebSocketClientProtocol) -> None:
@@ -154,16 +146,42 @@ class SessionManager:
             message = await self.upstream_message_queue.get()
             receiver = message.header.receiver
 
-            # Currently receiver being None means the message should be
-            # terminated by the server
-            if receiver is not None:
-                if receiver in self.potential_sessions.keys():
-                    self._activate_outbound_session(receiver)
-
-                if receiver in self.active_sessions.keys():
-                    message = self._encrypt_user_payload(message)
-
-            await cans_send(message, conn)
+            if receiver is None:
+                # Receiver is None - the message should be terminated by
+                # the server and so no crypto session is used
+                await cans_send(message, conn)
+            elif receiver in self.state_machine.potential_sessions.keys():
+                # Session not yet established, buffer the user message
+                # and initiate the key exchange
+                self.log.debug(
+                    f"Sending first message to peer {receiver}. Buffering the"
+                    + " user message and sending PEER_HELLO first..."
+                )
+                self.state_machine.make_session_pending(receiver, message)
+                # Send a hello message first
+                message = PeerHello(receiver)
+                message.header.sender = self.identity
+                message = self._encrypt_user_payload(message)
+                await cans_send(message, conn)
+                # The buffered user message will be sent as soon as session
+                # is established
+            elif receiver in self.state_machine.pending_sessions.keys():
+                self.log.warning(
+                    f"Buffering new message to peer {receiver}. Session still"
+                    + " not established"
+                )
+                # Still waiting for ACK, buffer the message
+                self.state_machine.pend_message(receiver, message)
+            elif receiver in self.state_machine.active_sessions.keys():
+                # Well-established session, encrypt the payload
+                message = self._encrypt_user_payload(message)
+                await cans_send(message, conn)
+            else:
+                self.log.error(
+                    "Internal error. Tried sending message"
+                    + f" {message.header.msg_id} to an unknown receiver"
+                    + f" {message.header.receiver}"
+                )
 
     async def _handle_downstream(
         self, conn: ws.WebSocketClientProtocol
@@ -181,17 +199,71 @@ class SessionManager:
                     + f"{message.header.msg_id}"
                 )
 
-    async def _handle_message_user(self, message: CansMessage) -> None:
+    async def _resolve_race_condition(
+        self, hello_message: CansMessage
+    ) -> None:
+        """Resolve an outbound session conflict."""
+        peer = hello_message.header.sender
+        # Decide based on the public ID which party should submit
+        if self.identity < peer:
+            self.log.info(
+                f"Forfeiting pending outbound session with peer {peer}"
+                + " and accepting inbound session..."
+            )
+            # Forfeit the outbound session and accept an inbound session
+            self.state_machine.activate_inbound_session(hello_message)
+            # Send ACK to the other party
+            await self.__acknowledge_peer_session(peer)
+
+    async def __acknowledge_peer_session(self, peer: PubKeyDigest) -> None:
+        """Send an session established acknowledgement to the peer."""
+        acknowledge = SessionEstablished(peer)
+        acknowledge.header.sender = self.identity
+        await self.send_message(acknowledge)
+
+    async def _handle_message_user_message(self, message: CansMessage) -> None:
         """Handle message type USER_MESSAGE."""
         sender = message.header.sender
 
-        if sender in self.active_sessions.keys():
+        if sender in self.state_machine.active_sessions.keys():
             message = self._decrypt_user_payload(message)
             await self.downstream_user_message_queue.put(message)
         else:
-            self._activate_inbound_session(message)
-            message = self._decrypt_user_payload_prekey(message)
-            await self.downstream_user_message_queue.put(message)
+            self.log.warning(
+                f"Dropping a user message from {sender}! No active session!"
+            )
+
+    async def _handle_message_peer_hello(self, message: CansMessage) -> None:
+        """Handle message type PEER_HELLO."""
+        peer = message.header.sender
+        self.log.debug(f"Handling PEER_HELLO message from {peer}...")
+
+        if peer in self.state_machine.potential_sessions.keys():
+            # Activate an inbound session
+            self.state_machine.activate_inbound_session(message)
+            # Send ACK to the other party
+            await self.__acknowledge_peer_session(peer)
+        elif peer in self.state_machine.pending_sessions.keys():
+            # Race condition! Both parties started outbound sessions
+            # at the same time!
+            self.log.info(
+                f"Outbound session conflict occurred with peer {peer}"
+            )
+            # TODO: Add max number of retries
+            await self._resolve_race_condition(message)
+        elif peer in self.state_machine.active_sessions.keys():
+            self.log.error(
+                "Internal error! Received PEER_HELLO"
+                + f" from an active peer: {peer}"
+            )
+        else:
+            # Hello from a new user
+            self.log.debug(f"Received PEER_HELLO from an unknown user: {peer}")
+            # Activate an inbound session
+            self.state_machine.activate_inbound_session(message)
+            # Send ACK to the other party
+            await self.__acknowledge_peer_session(peer)
+            # TODO-UI: Implement handling of new users
 
     async def _handle_message_peer_unavailable(
         self, message: CansMessage
@@ -207,8 +279,10 @@ class SessionManager:
         """Handle message type PEER_LOGIN."""
         peer = message.payload["peer"]
         identity_key, one_time_key = message.payload["public_keys_bundle"]
-        self.potential_sessions[peer] = PotentialSession(
-            identity_key=identity_key, one_time_key=one_time_key
+        self.state_machine.add_potential_session(
+            peer=peer,
+            identity_key=identity_key,
+            one_time_key=one_time_key,
         )
 
         # TODO-UI implement behaviour of user login
@@ -218,11 +292,7 @@ class SessionManager:
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
         peer = message.payload["peer"]
-
-        if peer in self.potential_sessions.keys():
-            self.potential_sessions.pop(peer)
-        elif peer in self.active_sessions.keys():
-            self.active_sessions.pop(peer)
+        self.state_machine.terminate_session(peer)
 
         # TODO-UI implement behaviour of user logout
         self.log.info(f"Peer {peer} just logged out!")
@@ -242,55 +312,35 @@ class SessionManager:
         rep_otk_resp.sender = self.identity
         await self.send_message(rep_otk_resp)
 
-    def _activate_outbound_session(self, peer: PubKeyDigest) -> None:
-        """Transform potential session into an active outbound session."""
-        self.log.debug(f"Activating outbound session with {peer}...")
-        # Remove entry from potential sessions
-        potential_session = self.potential_sessions.pop(peer)
-        # Transform potential session to active session
-        active_session = ActiveSession(account=self.account)
-        active_session.start_outbound_session(
-            peer_id_key=potential_session.identity_key,
-            peer_one_time_key=potential_session.one_time_key,
-        )
-        # Store new active session
-        self.active_sessions[peer] = active_session
-
-    def _activate_inbound_session(self, message: CansMessage) -> None:
-        """Activate an inbound session based on a received prekey message."""
+    async def _handle_message_session_established(
+        self, message: CansMessage
+    ) -> None:
+        """Handle message type SESSION_ESTABLISHED."""
         peer = message.header.sender
-        self.log.debug(f"Activating inbound session with {peer}...")
-        prekey_message = OlmPreKeyMessage(message.payload)
-        # Remove peer from potential sessions if present
-        if peer in self.potential_sessions:
-            self.potential_sessions.pop(peer)
-        # Activate a new session
-        active_session = ActiveSession(account=self.account)
-        active_session.start_inbound_session(prekey_message)
-        # Store new active session
-        self.active_sessions[peer] = active_session
-
-    def _encrypt_user_payload(self, message: CansMessage) -> CansMessage:
-        """Encrypt the payload of a user message."""
-        olm_message = self.active_sessions[message.header.receiver].encrypt(
-            message.payload
+        self.log.debug(
+            f"Handling message SESSION_ESTABLISHED from peer {peer}..."
         )
+        # Get pending messages
+        pending_messages = self.state_machine.flush_pending_session(peer)
+        # Mark session as active
+        self.state_machine.mark_outbound_session_active(message)
+
+        # Send the pending messages
+        for message in pending_messages:
+            await self.send_message(message)
+
+    def _encrypt_user_payload(self, message: CansMessage) -> str:
+        """Encrypt the payload of a user message."""
+        receiver = message.header.receiver
+        encrypt = self.state_machine.get_encryption_callback(receiver)
+        olm_message = encrypt(message.payload)
         message.payload = olm_message.ciphertext
         return message
 
-    def _decrypt_user_payload(self, message: CansMessage) -> CansMessage:
+    def _decrypt_user_payload(self, message: CansMessage) -> str:
         """Decrypt the payload of a user message."""
+        sender = message.header.sender
+        decrypt = self.state_machine.get_decryption_callback(sender)
         olm_message = OlmMessage(message.payload)
-        message.payload = self.active_sessions[message.header.sender].decrypt(
-            olm_message
-        )
-        return message
-
-    def _decrypt_user_payload_prekey(
-        self, message: CansMessage
-    ) -> CansMessage:
-        """Decrypt user message wrapped in a prekey olm message."""
-        prekey_message = OlmPreKeyMessage(message.payload)
-        session = self.active_sessions[message.header.sender]
-        message.payload = session.decrypt(prekey_message)
+        message.payload = decrypt(olm_message)
         return message

@@ -22,7 +22,10 @@ class SessionUpstreamHandler:
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self.__handle_message_user_message,
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
+            CansMsgId.PEER_HELLO: self.__handle_message_peer_hello,
             # fmt: off
+            CansMsgId.SESSION_ESTABLISHED:
+                self.__handle_message_session_established,
             CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP:
                 self.__handle_message_replenish_one_time_keys_req,
             # fmt: on
@@ -67,6 +70,20 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type SHARE_CONTACTS."""
+        # User traffic - just route it
+        await self.route_message(message)
+
+    async def __handle_message_peer_hello(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type PEER_HELLO."""
+        # User traffic - just route it
+        await self.route_message(message)
+
+    async def __handle_message_session_established(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type SESSION_ESTABLISHED."""
         # User traffic - just route it
         await self.route_message(message)
 

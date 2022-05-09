@@ -60,14 +60,8 @@ class MockClient(Client):
         message = self.session_manager.user_message_to(
             self.test_peer, f"Hello {self.test_peer}"
         )
+
         self.log.debug(f"Sending message to {self.test_peer}...")
-
-        # TODO: Fix handling outbound sessions being created by both
-        # both parties concurrently and remove this
-        if "test_multiple_clients_Bob" == self.test_peer:
-            self.log.debug("Alice sleeping additional 2 seconds...")
-            await asyncio.sleep(2)
-
         await self.session_manager.send_message(message)
 
     async def _receive_message_from_peer(self) -> None:
