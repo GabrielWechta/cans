@@ -7,7 +7,6 @@ from os import mkdir, path
 from pathlib import Path
 from shutil import rmtree
 
-import argon2
 from olm import Account
 
 from common.keys import KeyPair
@@ -91,16 +90,9 @@ class Startup:
 
     def get_key(self, passphrase: str = "") -> bytes:
         """Derive AES key based on argon2 hash of hwf and passphrase."""
-        hwf = self._hardware_fingerprint()
-        return argon2.low_level.hash_secret_raw(
-            secret=(hwf + passphrase).encode("utf-8"),
-            salt=hwf.encode("utf-8"),
-            type=argon2.low_level.Type(2),
-            time_cost=argon2.DEFAULT_TIME_COST,
-            memory_cost=argon2.DEFAULT_MEMORY_COST,
-            parallelism=argon2.DEFAULT_PARALLELISM,
-            hash_len=32,
-        )
+        return hashlib.sha256(
+            (self._hardware_fingerprint() + passphrase).encode("utf-8")
+        ).digest()
 
     def generate_key_pair(self, password: str) -> KeyPair:
         """Run OpenSSL to generate a pair of RSA keys.
