@@ -88,9 +88,11 @@ class Startup:
             (drive_UUID + cpu_model + username).encode()
         ).hexdigest()
 
-    def get_password(self, passphrase: str) -> str:
+    def get_key(self, passphrase: str = "") -> bytes:
         """Derive AES key based on argon2 hash of hwf and passphrase."""
-        return self._hardware_fingerprint() + passphrase
+        return hashlib.sha256(
+            (self._hardware_fingerprint() + passphrase).encode("utf-8")
+        ).digest()
 
     def generate_key_pair(self, password: str) -> KeyPair:
         """Run OpenSSL to generate a pair of RSA keys.
