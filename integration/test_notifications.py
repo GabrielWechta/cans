@@ -81,10 +81,9 @@ class MockClient(Client):
             message: CansMessage = await asyncio.wait_for(
                 self.session_manager.receive_system_message(), timeout
             )
-            self.log.info(f"Received message {message.header.msg_id}")
             if message.header.msg_id == CansMsgId.PEER_LOGIN:
                 login_notif_received = True
-            if message.header.msg_id == CansMsgId.PEER_LOGOUT:
+            elif message.header.msg_id == CansMsgId.PEER_LOGOUT:
                 if login_notif_received:
                     raise NotificationsOkException()
                 else:

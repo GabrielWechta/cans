@@ -11,13 +11,17 @@ from .keys import PubKey, PubKeyDigest, PublicKeysBundle
 
 CansSerial = str
 
+CANS_PEER_HANDSHAKE_MAGIC = "PeerHandshakeMagic"
+
 
 @unique
 class CansMsgId(IntEnum):
     """CANS message ID."""
 
     # User traffic
+    SESSION_ESTABLISHED = auto()
     USER_MESSAGE = auto()
+    PEER_HELLO = auto()
     SHARE_CONTACTS = auto()
 
     # Client-server handshake
@@ -63,6 +67,28 @@ class UserMessage(CansMessage):
         self.header.msg_id = CansMsgId.USER_MESSAGE
         self.header.receiver = receiver
         self.payload = payload
+
+
+class PeerHello(CansMessage):
+    """Peer handshake."""
+
+    def __init__(self, receiver: PubKeyDigest) -> None:
+        """Create a peer handshake message."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.PEER_HELLO
+        self.header.receiver = receiver
+        self.payload = CANS_PEER_HANDSHAKE_MAGIC
+
+
+class SessionEstablished(CansMessage):
+    """Session established acknowledgement."""
+
+    def __init__(self, receiver: PubKeyDigest) -> None:
+        """Create a session established ack message."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.SESSION_ESTABLISHED
+        self.header.receiver = receiver
+        self.payload = CANS_PEER_HANDSHAKE_MAGIC
 
 
 class PeerUnavailable(CansMessage):

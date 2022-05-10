@@ -68,6 +68,5 @@ if __name__ == "__main__":
     else:
         identity = "cans-echo-service"
 
-    print(identity)
     client = EchoClient(identity)
     client.run()
