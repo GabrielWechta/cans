@@ -35,19 +35,19 @@ class Client:
         # Check if necessary files exist
         if self.startup.is_first_startup():
             user_passphrase = "SafeAndSecurePassword2137"
-            self.password = self.startup.get_password(user_passphrase)
+            self.password = self.startup.get_key(user_passphrase)
             self.startup.cans_setup()
             self.pub_key, self.priv_key = self.startup.generate_key_pair(
                 self.password
             )
-            self.account = self.startup.create_crypto_account(self.password)
+            self.account = self.startup.create_crypto_account(user_passphrase)
         else:
             user_passphrase = "SafeAndSecurePassword2137"
-            self.password = self.startup.get_password(user_passphrase)
+            self.password = self.startup.get_key(user_passphrase)
             self.pub_key, self.priv_key = self.startup.decrypt_key_pair(
                 self.password
             )
-            self.account = self.startup.load_crypto_account(self.password)
+            self.account = self.startup.load_crypto_account(user_passphrase)
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()

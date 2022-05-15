@@ -94,7 +94,7 @@ class Startup:
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).digest()
 
-    def generate_key_pair(self, password: str) -> KeyPair:
+    def generate_key_pair(self, password: bytes) -> KeyPair:
         """Run OpenSSL to generate a pair of RSA keys.
 
         Save generated values to the .cans/keys directory.
@@ -131,7 +131,7 @@ class Startup:
         # TODO: Clean up keys before returning them
         return pub_key, priv_key
 
-    def decrypt_key_pair(self, password: str) -> KeyPair:
+    def decrypt_key_pair(self, password: bytes) -> KeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
         priv_key = ""
