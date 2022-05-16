@@ -3,13 +3,15 @@
 import asyncio
 import logging
 import os
+from typing import List, Tuple
 
 import pytest
+from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import KeyPair, PubKey
+from common.keys import PKI_CURVE_NAME, KeyPair, digest_key
 from common.messages import CansMessage
 
 
@@ -36,7 +38,7 @@ class MockSessionManager(SessionManager):
 class MockClient(Client):
     """Mock client."""
 
-    def __init__(self, my_keys: KeyPair, peer_pub_key: PubKey) -> None:
+    def __init__(self, my_keys: KeyPair, friends: List[str]) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
@@ -44,7 +46,7 @@ class MockClient(Client):
         self.event_loop = asyncio.get_event_loop()
         self._do_logger_config()
 
-        self.test_peer = peer_pub_key
+        self.friends = friends
 
         self.log = logging.getLogger("cans-logger")
         self.log.setLevel(logging.DEBUG)
@@ -61,26 +63,35 @@ class MockClient(Client):
         await self.session_manager.connect(
             url=f"wss://{self.server_hostname}:{self.server_port}",
             certpath=self.certpath,
-            friends=[self.test_peer],
+            friends=self.friends,
         )
+
+
+def __generate_keys() -> Tuple[str, str]:
+    """Generate key pair."""
+    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
+    private_key = ec_key.export_key(format="PEM")
+    public_key = ec_key.public_key().export_key(format="PEM")
+    return private_key, public_key
 
 
 async def impl_test_key_replenishment():
     """Async implementation of the test."""
+    alice_secret, alice_public = __generate_keys()
     alice = MockClient(
-        my_keys=("Alice", "Alice"),
-        peer_pub_key="Bob",  # Non-existent peer
+        my_keys=(alice_secret, alice_public),
+        friends=[],
     )
 
     # Start running the Alice client in the background
     alice_future = asyncio.create_task(alice.run())
 
-    for i in range(8):
+    for _ in range(8):
         # Run a couple of peers in the background to
         # deplete Alice's one-time keys
         peer = MockClient(
-            my_keys=(f"Peer_{i}", f"Peer_{i}"),
-            peer_pub_key="Alice",
+            my_keys=__generate_keys(),
+            friends=[digest_key(alice_public)],
         )
         asyncio.create_task(peer.run())
     timeout = 5

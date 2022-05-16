@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
 
-from .keys import PubKey, PubKeyDigest, PublicKeysBundle
+from .keys import PublicKeysBundle
 
 CansSerial = str
 
@@ -25,6 +25,10 @@ class CansMsgId(IntEnum):
     SHARE_CONTACTS = auto()
 
     # Client-server handshake
+    SCHNORR_COMMIT = auto()
+    SCHNORR_CHALLENGE = auto()
+    SCHNORR_RESPONSE = auto()
+
     SERVER_HELLO = auto()
     ACTIVE_FRIENDS = auto()
 
@@ -53,15 +57,15 @@ class CansMessage:
 
         def __init__(self) -> None:
             """Create a CANS header."""
-            self.sender: Optional[PubKeyDigest] = None
-            self.receiver: Optional[PubKeyDigest] = None
+            self.sender: Optional[str] = None
+            self.receiver: Optional[str] = None
             self.msg_id: CansMsgId = CansMsgId.USER_MESSAGE
 
 
 class UserMessage(CansMessage):
     """User message."""
 
-    def __init__(self, receiver: PubKeyDigest, payload: str) -> None:
+    def __init__(self, receiver: str, payload: str) -> None:
         """Create a CANS user message to a peer."""
         super().__init__()
         self.header.msg_id = CansMsgId.USER_MESSAGE
@@ -72,7 +76,7 @@ class UserMessage(CansMessage):
 class PeerHello(CansMessage):
     """Peer handshake."""
 
-    def __init__(self, receiver: PubKeyDigest) -> None:
+    def __init__(self, receiver: str) -> None:
         """Create a peer handshake message."""
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_HELLO
@@ -83,7 +87,7 @@ class PeerHello(CansMessage):
 class SessionEstablished(CansMessage):
     """Session established acknowledgement."""
 
-    def __init__(self, receiver: PubKeyDigest) -> None:
+    def __init__(self, receiver: str) -> None:
         """Create a session established ack message."""
         super().__init__()
         self.header.msg_id = CansMsgId.SESSION_ESTABLISHED
@@ -94,7 +98,7 @@ class SessionEstablished(CansMessage):
 class PeerUnavailable(CansMessage):
     """Peer unavailable notification."""
 
-    def __init__(self, receiver: PubKeyDigest, peer: PubKeyDigest) -> None:
+    def __init__(self, receiver: str, peer: str) -> None:
         """Create a peer unavailable notification."""
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_UNAVAILABLE
@@ -103,25 +107,49 @@ class PeerUnavailable(CansMessage):
         self.payload = {"peer": peer}
 
 
-class ServerHello(CansMessage):
-    """Dummy handshake message.
+class SchnorrCommit(CansMessage):
+    """Commitment of the Schnorr identification scheme."""
 
-    To be replaced with actual authentication.
-    """
+    def __init__(self, public_key: str, commitment: str) -> None:
+        """Create a Schnorr commitment message."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.SCHNORR_COMMIT
+        self.header.receiver = ""
+        self.payload = {
+            "public_key": public_key,
+            "commitment": commitment,
+        }
+
+
+class SchnorrChallenge(CansMessage):
+    """Challenge of the Schnorr identification scheme."""
+
+    def __init__(self, challenge: int) -> None:
+        """Create a Schnorr challenge message."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.SCHNORR_CHALLENGE
+        self.header.receiver = ""  # No receiver set during the authentication
+        self.payload = {
+            "challenge": challenge,
+        }
+
+
+class SchnorrResponse(CansMessage):
+    """Response of the Schnorr identification scheme."""
 
     def __init__(
         self,
-        public_key: PubKey,
-        subscriptions: List[PubKeyDigest],
+        response: int,
+        subscriptions: List[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:
-        """Create a dummy handshake message."""
+        """Create a Schnorr response message."""
         super().__init__()
-        self.header.msg_id = CansMsgId.SERVER_HELLO
-        self.header.receiver = None
+        self.header.msg_id = CansMsgId.SCHNORR_RESPONSE
+        self.header.receiver = ""
         self.payload = {
-            "public_key": public_key,
+            "response": response,
             "subscriptions": subscriptions,
             "identity_key": identity_key,
             "one_time_keys": one_time_keys,
@@ -133,8 +161,8 @@ class PeerLogin(CansMessage):
 
     def __init__(
         self,
-        receiver: PubKeyDigest,
-        peer: PubKeyDigest,
+        receiver: str,
+        peer: str,
         public_keys_bundle: PublicKeysBundle,
     ) -> None:
         """Create a peer login notification."""
@@ -147,7 +175,7 @@ class PeerLogin(CansMessage):
 class PeerLogout(CansMessage):
     """Peer logout notification."""
 
-    def __init__(self, receiver: PubKeyDigest, peer: PubKeyDigest) -> None:
+    def __init__(self, receiver: str, peer: str) -> None:
         """Create a peer logout notification."""
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_LOGOUT
@@ -158,7 +186,7 @@ class PeerLogout(CansMessage):
 class AddSubscription(CansMessage):
     """Add subscription request."""
 
-    def __init__(self, subscriptions: List[PubKeyDigest]) -> None:
+    def __init__(self, subscriptions: List[str]) -> None:
         """Create an add subscription request."""
         super().__init__()
         self.header.msg_id = CansMsgId.ADD_SUBSCRIPTION
@@ -169,7 +197,7 @@ class AddSubscription(CansMessage):
 class RemoveSubscription(CansMessage):
     """Remove subscription request."""
 
-    def __init__(self, subscriptions: List[PubKeyDigest]) -> None:
+    def __init__(self, subscriptions: List[str]) -> None:
         """Create a remove subscription request."""
         super().__init__()
         self.header.msg_id = CansMsgId.REMOVE_SUBSCRIPTION
@@ -180,7 +208,7 @@ class RemoveSubscription(CansMessage):
 class AddBlacklist(CansMessage):
     """Blacklist users request."""
 
-    def __init__(self, blacklist: List[PubKeyDigest]) -> None:
+    def __init__(self, blacklist: List[str]) -> None:
         """Create a blacklist request."""
         super().__init__()
         self.header.msg_id = CansMsgId.ADD_BLACKLIST
@@ -191,7 +219,7 @@ class AddBlacklist(CansMessage):
 class RemoveBlacklist(CansMessage):
     """Whitelist users request."""
 
-    def __init__(self, whitelist: List[PubKeyDigest]) -> None:
+    def __init__(self, whitelist: List[str]) -> None:
         """Create a whitelist request."""
         super().__init__()
         self.header.msg_id = CansMsgId.REMOVE_BLACKLIST
@@ -204,8 +232,8 @@ class ActiveFriends(CansMessage):
 
     def __init__(
         self,
-        receiver: PubKeyDigest,
-        active_friends: Dict[PubKeyDigest, PublicKeysBundle],
+        receiver: str,
+        active_friends: Dict[str, PublicKeysBundle],
     ) -> None:
         """Create an active friends notification."""
         super().__init__()
@@ -217,7 +245,7 @@ class ActiveFriends(CansMessage):
 class ReplenishOneTimeKeysReq(CansMessage):
     """Send replenish one time keys request to the client."""
 
-    def __init__(self, receiver: PubKeyDigest, one_time_keys_num: int) -> None:
+    def __init__(self, receiver: str, one_time_keys_num: int) -> None:
         """Create a replenish request."""
         super().__init__()
         self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ

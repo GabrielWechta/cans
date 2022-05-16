@@ -3,7 +3,6 @@
 from enum import IntEnum, auto, unique
 from typing import Any, Dict, Union
 
-from common.keys import PubKeyDigest
 from common.messages import CansMessage
 
 
@@ -41,7 +40,7 @@ class MessageEvent(SessionEvent):
 class LoginEvent(SessionEvent):
     """A user login event."""
 
-    def __init__(self, peer_key_digest: PubKeyDigest) -> None:
+    def __init__(self, peer_key_digest: str) -> None:
         """Initialize a login event."""
         super().__init__(EventType.LOGIN, {"peer": peer_key_digest})
 
@@ -49,7 +48,7 @@ class LoginEvent(SessionEvent):
 class LogoutEvent(SessionEvent):
     """A user logout event."""
 
-    def __init__(self, peer_key_digest: PubKeyDigest) -> None:
+    def __init__(self, peer_key_digest: str) -> None:
         """Initialize a logout event."""
         super().__init__(EventType.LOGOUT, {"peer": peer_key_digest})
 

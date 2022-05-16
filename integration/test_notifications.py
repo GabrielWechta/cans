@@ -3,15 +3,16 @@
 import asyncio
 import logging
 import os
-from typing import Callable
+from typing import Callable, Tuple
 
 import pytest
 import websockets.client as ws
+from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import KeyPair, PubKey
+from common.keys import PKI_CURVE_NAME, KeyPair, digest_key
 from common.messages import CansMessage, CansMsgId
 
 
@@ -43,7 +44,7 @@ class MockClient(Client):
     def __init__(
         self,
         my_keys: KeyPair,
-        peer_pub_key: PubKey,
+        peer_pub_key: str,
         session_manager_constructor: Callable,
     ) -> None:
         """Construct mock client."""
@@ -90,11 +91,22 @@ class MockClient(Client):
                     self.log.error("Received PEER_LOGOUT but no PEER_LOGIN")
 
 
+def __generate_keys() -> Tuple[str, str]:
+    """Generate key pair."""
+    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
+    private_key = ec_key.export_key(format="PEM")
+    public_key = ec_key.public_key().export_key(format="PEM")
+    return private_key, public_key
+
+
 async def impl_test_notifications():
     """Async implementation of the test."""
+    alice_secret, alice_public = __generate_keys()
+    bob_secret, bob_public = __generate_keys()
+
     alice = MockClient(
-        my_keys=("Alice", "Alice"),
-        peer_pub_key="Bob",
+        my_keys=(alice_secret, alice_public),
+        peer_pub_key=digest_key(bob_public),
         session_manager_constructor=SessionManager,
     )
 
@@ -106,8 +118,8 @@ async def impl_test_notifications():
 
     # Start Alice's friend in the background
     bob = MockClient(
-        my_keys=("Bob", "Bob"),
-        peer_pub_key="Alice",
+        my_keys=(bob_secret, bob_public),
+        peer_pub_key=digest_key(alice_public),
         session_manager_constructor=MockSessionManager,
     )
     asyncio.create_task(bob.run())

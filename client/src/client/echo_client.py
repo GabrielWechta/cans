@@ -1,11 +1,8 @@
 """Echo client service."""
 import asyncio
 import os
-import sys
 
 from olm import Account
-
-from common.keys import PubKeyDigest
 
 from .session_manager_client import SessionManager
 
@@ -13,7 +10,7 @@ from .session_manager_client import SessionManager
 class EchoClient:
     """Echo client service."""
 
-    def __init__(self, identity: PubKeyDigest) -> None:
+    def __init__(self) -> None:
         """Run an echo client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
@@ -23,8 +20,20 @@ class EchoClient:
 
         account = Account()
 
+        private_key = """-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIJtHyoESBz5C0dZaWH0ILVh6912SoNtQ0u1HqUmjg3aeoAoGCCqGSM49
+AwEHoUQDQgAEW7zs8m7vx15kt1YFYobo9qL7jMqsksLiCIUdTgUnbpVQm7sZQnc5
+4QPzNZGPbxZe7BPhzlNhnuQyHDZ/0Ij6QA==
+-----END EC PRIVATE KEY-----
+"""
+        public_key = """-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEW7zs8m7vx15kt1YFYobo9qL7jMqs
+ksLiCIUdTgUnbpVQm7sZQnc54QPzNZGPbxZe7BPhzlNhnuQyHDZ/0Ij6QA==
+-----END PUBLIC KEY-----
+"""
+
         self.session_manager = SessionManager(
-            keys=(identity, identity),
+            keys=(private_key, public_key),
             account=account,
         )
 
@@ -63,10 +72,5 @@ class EchoClient:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        identity = sys.argv[1]
-    else:
-        identity = "cans-echo-service"
-
-    client = EchoClient(identity)
+    client = EchoClient()
     client.run()

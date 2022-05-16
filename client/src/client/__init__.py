@@ -35,38 +35,34 @@ class Client:
         # Check if necessary files exist
         if self.startup.is_first_startup():
             user_passphrase = "SafeAndSecurePassword2137"
-            self.password = self.startup.get_password(user_passphrase)
+            self.password = self.startup.get_key(user_passphrase)
             self.startup.cans_setup()
-            self.pub_key, self.priv_key = self.startup.generate_key_pair(
+            self.startup.generate_key_pair(self.password)
+            self.pub_key, self.priv_key = self.startup.load_key_pair(
                 self.password
             )
-            self.account = self.startup.create_crypto_account(self.password)
+            self.account = self.startup.create_crypto_account(user_passphrase)
         else:
             user_passphrase = "SafeAndSecurePassword2137"
-            self.password = self.startup.get_password(user_passphrase)
-            self.pub_key, self.priv_key = self.startup.decrypt_key_pair(
+            self.password = self.startup.get_key(user_passphrase)
+            self.pub_key, self.priv_key = self.startup.load_key_pair(
                 self.password
             )
-            self.account = self.startup.load_crypto_account(self.password)
+            self.account = self.startup.load_crypto_account(user_passphrase)
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager()
 
-        # TODO: Remove hardcoded identity
-        pub_key = "AlicePubKey"
-        priv_key = "AlicePrivKey"
-        # set identity
+        # Set identity
         self.myself = UserModel(
-            username="Alice", id=digest_key(pub_key), color="blue"
+            username="Alice", id=digest_key(self.pub_key), color="blue"
+        )
+        self.echo_peer_id = (
+            "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
         )
         echo_client = UserModel(
-            username="Echo", id="cans-echo-service", color="red"
+            username="Echo", id=self.echo_peer_id, color="red"
         )
-        bob_client = UserModel(username="Bob", id="bob_key", color="orange")
-        eve_client = UserModel(username="Eve", id="eve_key", color="purple")
-        # offline_client = UserModel(
-        #    username="Sleepy", id="doesnt exits", color="yellow"
-        # )
 
         self.ui = UserInterface(
             loop=self.event_loop,
@@ -75,13 +71,9 @@ class Client:
         )
 
         self.ui.view.add_chat(echo_client)
-        self.ui.view.add_chat(bob_client)
-        self.ui.view.add_chat(eve_client)
-        self.ui.view.add_chat(echo_client)
-        # self.ui.view.add_chat(offline_client)
 
         self.session_manager = SessionManager(
-            keys=(pub_key, priv_key),
+            keys=(self.priv_key, self.pub_key),
             account=self.account,
         )
 
@@ -93,7 +85,7 @@ class Client:
                 self.session_manager.connect(
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
-                    friends=["cans-echo-service", "eve_key", "bob_key"],
+                    friends=[self.echo_peer_id],
                 ),
                 self._handle_downstream_user_traffic(),
                 self._handle_downstream_system_traffic(),
@@ -107,6 +99,7 @@ class Client:
 
             self.log.debug(f"Received message from {message.header.sender}")
 
+            # TODO: Add support for message from unknown user
             # TODO: Add message to database
 
             # Forward to UI
@@ -176,4 +169,4 @@ class Client:
 
         logger.setLevel(logging.INFO)
         # NOTE: Uncomment to enable debug logging during development
-        # logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)

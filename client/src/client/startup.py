@@ -16,7 +16,7 @@ class Startup:
     """Startup Component.
 
     Create application directory, provide paths to keys and database,
-    derive hardware fingerprint, generate user's RSA keys, generate AES
+    derive hardware fingerprint, generate user's EC keys, generate AES
     key to encrypt/decrypt database plus private key.
     """
 
@@ -36,7 +36,7 @@ class Startup:
         mkdir(self._keys_dir, mode=0o700)
 
     def is_first_startup(self) -> bool:
-        """Check if user's RSA KeyPair exists."""
+        """Check if user's EC KeyPair exists."""
         pub_key_exists = path.isfile(self.user_public_key_path)
         priv_key_exists = path.isfile(self.user_private_key_path)
         crypto_account_exists = path.isfile(self.crypto_account_path)
@@ -94,44 +94,29 @@ class Startup:
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).digest()
 
-    def generate_key_pair(self, password: str) -> KeyPair:
-        """Run OpenSSL to generate a pair of RSA keys.
+    def generate_key_pair(self, password: bytes) -> KeyPair:
+        """Run OpenSSL to generate a pair of EC keys.
 
         Save generated values to the .cans/keys directory.
         """
-        priv_key = str(
-            subprocess.run(
-                "openssl genrsa 4096",
-                capture_output=True,
-                text=True,
-                shell=True,
-            ).stdout
-        )
-
-        with open(self.user_private_key_path, "w") as private_key_file:
-            private_key_file.write(priv_key)
-
-        pub_key = str(
-            subprocess.run(
-                "openssl rsa -in "
-                + self.user_private_key_path.as_posix()
-                + " -pubout",
-                capture_output=True,
-                text=True,
-                shell=True,
-            ).stdout
-        )
-
-        with open(self.user_public_key_path, "w") as public_key_file:
-            public_key_file.write(pub_key)
-
-        # TODO: Encrypt private key
+        # TODO: Add private key encryption
         password = password
 
-        # TODO: Clean up keys before returning them
-        return pub_key, priv_key
+        subprocess.run(
+            "openssl ecparam -name prime256v1 -genkey -noout -out "
+            + self.user_private_key_path.as_posix(),
+            shell=True,
+        )
 
-    def decrypt_key_pair(self, password: str) -> KeyPair:
+        subprocess.run(
+            "openssl ec -in "
+            + self.user_private_key_path.as_posix()
+            + " -pubout -out "
+            + self.user_public_key_path.as_posix(),
+            shell=True,
+        )
+
+    def load_key_pair(self, password: bytes) -> KeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
         priv_key = ""

@@ -7,7 +7,7 @@ from typing import Callable, Dict, List
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from common.keys import PubKeyDigest, PublicKeysBundle
+from common.keys import PublicKeysBundle
 from common.messages import (
     ActiveFriends,
     CansMessage,
@@ -44,7 +44,7 @@ class SessionManager:
         # Get the logger
         self.log = logging.getLogger("cans-logger")
         # Map public keys to ClientSessions
-        self.sessions: Dict[PubKeyDigest, ClientSession] = {}
+        self.sessions: Dict[str, ClientSession] = {}
         # Start DatabaseManager
         self.database_manager = DatabaseManager()
 
@@ -57,8 +57,8 @@ class SessionManager:
     async def authed_user_entry(
         self,
         conn: WebSocketServerProtocol,
-        public_key_digest: PubKeyDigest,
-        subscriptions: List[PubKeyDigest],
+        public_key_digest: str,
+        subscriptions: List[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:
@@ -129,7 +129,7 @@ class SessionManager:
                 + f" destined to {message.header.receiver}"
             )
 
-    async def __get_one_time_key(self, client: PubKeyDigest) -> str:
+    async def __get_one_time_key(self, client: str) -> str:
         """Pop peer's one-time key and request replenishment."""
         session = self.sessions[client]
         # TODO: Properly handle a race condition when no keys are available
@@ -156,7 +156,7 @@ class SessionManager:
     ) -> None:
         """Find active friends of the new client and send a notification."""
         # Check for active users in the subscription list
-        active_friends: Dict[PubKeyDigest, PublicKeysBundle] = {}
+        active_friends: Dict[str, PublicKeysBundle] = {}
         for friend in session.subscriptions:
             if friend in self.sessions.keys():
                 active_friends[friend] = (
@@ -170,7 +170,7 @@ class SessionManager:
         await cans_send(active_friends_notification, session.connection)
 
     async def __notify_subscribers(
-        self, public_key_digest: PubKeyDigest, event_constructor: Callable
+        self, public_key_digest: str, event_constructor: Callable
     ) -> None:
         """Notify all subscribers about successful login."""
         subscribers = await self.database_manager.get_subscribers_of(
@@ -188,8 +188,8 @@ class SessionManager:
 
     async def __update_subscriptions_database(
         self,
-        public_key_digest: PubKeyDigest,
-        subscriptions: List[PubKeyDigest],
+        public_key_digest: str,
+        subscriptions: List[str],
     ) -> None:
         # Add subscriptions to the database
         for peer in subscriptions:
@@ -201,7 +201,7 @@ class SessionManager:
             )
 
     async def __handle_connection_closed(
-        self, public_key_digest: PubKeyDigest, exception: ConnectionClosed
+        self, public_key_digest: str, exception: ConnectionClosed
     ) -> None:
         """Handle the client closing the connection."""
         # Remove the client's session
