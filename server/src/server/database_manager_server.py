@@ -7,8 +7,6 @@ fetching/committing application-specific data.
 import logging
 from typing import Dict, Set
 
-from common.keys import PubKeyDigest
-
 
 class DatabaseManager:
     """Serverside database manager."""
@@ -16,11 +14,9 @@ class DatabaseManager:
     def __init__(self) -> None:
         """Construct the serverside database manager."""
         self.log = logging.getLogger("cans-logger")
-        self.subscribers_of: Dict[PubKeyDigest, Set[PubKeyDigest]] = {}
+        self.subscribers_of: Dict[str, Set[str]] = {}
 
-    async def get_subscribers_of(
-        self, target: PubKeyDigest
-    ) -> Set[PubKeyDigest]:
+    async def get_subscribers_of(self, target: str) -> Set[str]:
         """Fetch a list of subscribers."""
         # TODO: Use the database
         if target in self.subscribers_of.keys():
@@ -28,9 +24,7 @@ class DatabaseManager:
         else:
             return set()
 
-    async def add_subscriber_of(
-        self, target: PubKeyDigest, subscriber: PubKeyDigest
-    ) -> None:
+    async def add_subscriber_of(self, target: str, subscriber: str) -> None:
         """Store a subscription in the database."""
         # TODO: Use the database
         if target in self.subscribers_of.keys():

@@ -11,8 +11,14 @@ from typing import Dict, List, Tuple
 
 import websockets.server as ws
 
-from common.keys import PubKey, PubKeyDigest
-from common.messages import ServerHello, cans_recv
+from common.keys import digest_key, get_schnorr_challenge, schnorr_verify
+from common.messages import (
+    SchnorrChallenge,
+    SchnorrCommit,
+    SchnorrResponse,
+    cans_recv,
+    cans_send,
+)
 
 from .session_manager_server import SessionManager
 
@@ -80,7 +86,7 @@ class ConnectionListener:
                 identity_key,
                 one_time_keys,
             ) = await self.__authenticate_user(conn)
-            public_key_digest = self.__digest_key(public_key)
+            public_key_digest = digest_key(public_key)
             self.log.debug(
                 f"Successfully authenticated user at {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]} with public key {public_key}"
@@ -102,27 +108,38 @@ class ConnectionListener:
                 + f"{conn.remote_address[1]}"
             )
             return
+        except Exception:
+            self.log.error("Unexpected error occurred!", exc_info=True)
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
-    ) -> Tuple[PubKey, List[PubKeyDigest], str, Dict[str, str]]:
+    ) -> Tuple[str, List[str], str, Dict[str, str]]:
         """Run authentication protocol with the user."""
-        self.log.error(
-            f"__authenticate_user{conn.remote_address}: Implement me!"
-        )
-        # TODO: Get the public key from the user as well as proof of
-        #       knowledge of the corresponding private key
+        # Await commitment message
+        commit_message: SchnorrCommit = await cans_recv(conn)
+        public_key = commit_message.payload["public_key"]
+        commitment = commit_message.payload["commitment"]
 
-        # NOTE: In the alpha-version user simply sends their public key
-        # with no further auth
-        message: ServerHello = await cans_recv(conn)
-        return (
-            message.payload["public_key"],
-            message.payload["subscriptions"],
-            message.payload["identity_key"],
-            message.payload["one_time_keys"],
-        )
+        # Send back the challenge
+        challenge = get_schnorr_challenge()
+        challenge_message = SchnorrChallenge(challenge)
+        await cans_send(challenge_message, conn)
 
-    def __digest_key(self, public_key: PubKey) -> PubKeyDigest:
-        # TODO: Call src/common code to calculate the hash over the key
-        return public_key
+        # Wait for the response
+        response_message: SchnorrResponse = await cans_recv(conn)
+        response = response_message.payload["response"]
+
+        if schnorr_verify(
+            public_key=public_key,
+            commitment=commitment,
+            challenge=challenge,
+            response=response,
+        ):
+            return (
+                public_key,
+                response_message.payload["subscriptions"],
+                response_message.payload["identity_key"],
+                response_message.payload["one_time_keys"],
+            )
+        else:
+            raise CansServerAuthFailed("Authentication failed!")

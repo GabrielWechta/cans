@@ -3,14 +3,15 @@
 import asyncio
 import logging
 import os
-from typing import Callable
+from typing import Callable, Tuple
 
 import websockets.client as ws
+from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import KeyPair
+from common.keys import PKI_CURVE_NAME, KeyPair
 
 
 class FaultyClientException(Exception):
@@ -65,6 +66,11 @@ class MockClient(Client):
         self.log = logging.getLogger("cans-logger")
         self.log.setLevel(logging.DEBUG)
 
+        # TODO: Remove once beta is released and presented
+        self.echo_peer_id = (
+            "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
+        )
+
         account = Account()
         self.session_manager = session_manager_constructor(
             keys=keys, account=account
@@ -81,11 +87,19 @@ class MockClient(Client):
         )
 
 
+def __generate_keys() -> Tuple[str, str]:
+    """Generate key pair."""
+    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
+    private_key = ec_key.export_key(format="PEM")
+    public_key = ec_key.public_key().export_key(format="PEM")
+    return private_key, public_key
+
+
 def test_connection_dropped():
     """Test server's behaviour on connection dropped."""
-    # Run a fault client that immediately drops the connection
+    # Run a faulty client that immediately drops the connection
     faulty_client = MockClient(
-        ("test_connection_dropped_faulty", "test_connection_dropped_faulty"),
+        __generate_keys(),
         FaultySessionManager,
     )
     try:
@@ -94,7 +108,7 @@ def test_connection_dropped():
         faulty_client.log.info("Faulty client terminated abruptly")
 
     good_client = MockClient(
-        ("test_connection_dropped_good", "test_connection_dropped_good"),
+        __generate_keys(),
         MockSessionManager,
     )
     good_client.run()

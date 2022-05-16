@@ -3,13 +3,15 @@
 import asyncio
 import logging
 import os
+from typing import Tuple
 
 import pytest
+from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import KeyPair, PubKey
+from common.keys import PKI_CURVE_NAME, KeyPair, digest_key
 
 
 class MultipleClientsOkException(Exception):
@@ -21,7 +23,7 @@ class MultipleClientsOkException(Exception):
 class MockClient(Client):
     """Mock client."""
 
-    def __init__(self, my_keys: KeyPair, peer_pub_key: PubKey) -> None:
+    def __init__(self, my_keys: KeyPair, peer_pub_key: str) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
@@ -83,16 +85,27 @@ class MockClient(Client):
             raise e
 
 
+def __generate_keys() -> Tuple[str, str]:
+    """Generate key pair."""
+    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
+    private_key = ec_key.export_key(format="PEM")
+    public_key = ec_key.public_key().export_key(format="PEM")
+    return private_key, public_key
+
+
 def test_multiple_clients():
     """Test running multiple users."""
+    alice_secret, alice_public = __generate_keys()
+    bob_secret, bob_public = __generate_keys()
+
     alice = MockClient(
-        my_keys=("test_multiple_clients_Alice", "test_multiple_clients_Alice"),
-        peer_pub_key="test_multiple_clients_Bob",
+        my_keys=(alice_secret, alice_public),
+        peer_pub_key=digest_key(bob_public),
     )
 
     bob = MockClient(
-        my_keys=("test_multiple_clients_Bob", "test_multiple_clients_Bob"),
-        peer_pub_key="test_multiple_clients_Alice",
+        my_keys=(bob_secret, bob_public),
+        peer_pub_key=digest_key(alice_public),
     )
 
     with pytest.raises(MultipleClientsOkException):

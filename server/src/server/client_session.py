@@ -5,8 +5,6 @@ from typing import Dict, List
 
 import websockets.server as ws
 
-from common.keys import PubKeyDigest
-
 
 class ClientSession:
     """Class representing a client session with the server."""
@@ -14,8 +12,8 @@ class ClientSession:
     def __init__(
         self,
         conn: ws.WebSocketServerProtocol,
-        public_key_digest: PubKeyDigest,
-        subscriptions: List[PubKeyDigest],
+        public_key_digest: str,
+        subscriptions: List[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:

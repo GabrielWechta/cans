@@ -36,7 +36,6 @@ from typing import Callable, Dict, List
 
 from olm import Account, OlmMessage, OlmPreKeyMessage
 
-from common.keys import PubKeyDigest
 from common.messages import CANS_PEER_HANDSHAKE_MAGIC, CansMessage
 
 from .e2e_encryption import DoubleRatchetSession
@@ -91,18 +90,30 @@ class SessionsStateMachine:
         """Instantiate the state machine."""
         self.account = account
         self.log = logging.getLogger("cans-logger")
-        self.active_sessions: Dict[PubKeyDigest, ActiveSession] = {}
-        self.pending_sessions: Dict[PubKeyDigest, PendingSession] = {}
-        self.potential_sessions: Dict[PubKeyDigest, PotentialSession] = {}
+        self.active_sessions: Dict[str, ActiveSession] = {}
+        self.pending_sessions: Dict[str, PendingSession] = {}
+        self.potential_sessions: Dict[str, PotentialSession] = {}
 
-    def get_active_session(self, peer: PubKeyDigest) -> ActiveSession:
+    def active_session_with(self, peer: str) -> bool:
+        """Check if a session with peer is active."""
+        return peer in self.active_sessions.keys()
+
+    def pending_session_with(self, peer: str) -> bool:
+        """Check if a session with peer is pending."""
+        return peer in self.pending_sessions.keys()
+
+    def potential_session_with(self, peer: str) -> bool:
+        """Check if a potential session with peer exists."""
+        return peer in self.potential_sessions.keys()
+
+    def get_active_session(self, peer: str) -> ActiveSession:
         """Fetch an active session."""
         assert (
             peer in self.active_sessions.keys()
         ), "Sessions state machine inconsistency"
         return self.active_sessions[peer]
 
-    def get_encryption_callback(self, peer: PubKeyDigest) -> Callable:
+    def get_encryption_callback(self, peer: str) -> Callable:
         """Fetch an encryption callback associated with a session."""
         if peer in self.active_sessions.keys():
             return self.active_sessions[peer].encrypt
@@ -114,7 +125,7 @@ class SessionsStateMachine:
                 + f" invalid session with peer {peer}"
             )
 
-    def get_decryption_callback(self, peer: PubKeyDigest) -> Callable:
+    def get_decryption_callback(self, peer: str) -> Callable:
         """Fetch a decryption callback associated with a session."""
         if peer in self.active_sessions.keys():
             return self.active_sessions[peer].decrypt
@@ -127,7 +138,7 @@ class SessionsStateMachine:
             )
 
     def add_potential_session(
-        self, peer: PubKeyDigest, identity_key: str, one_time_key: str
+        self, peer: str, identity_key: str, one_time_key: str
     ) -> None:
         """Add a new potential session."""
         self.potential_sessions[peer] = PotentialSession(
@@ -135,7 +146,7 @@ class SessionsStateMachine:
             one_time_key,
         )
 
-    def terminate_session(self, peer: PubKeyDigest) -> None:
+    def terminate_session(self, peer: str) -> None:
         """Terminate a session, no matter its type."""
         if peer in self.potential_sessions.keys():
             self.potential_sessions.pop(peer)
@@ -145,7 +156,7 @@ class SessionsStateMachine:
             self.active_sessions.pop(peer)
 
     def make_session_pending(
-        self, peer: PubKeyDigest, user_message: CansMessage
+        self, peer: str, user_message: CansMessage
     ) -> None:
         """Transition from Potential Session to Pending Session."""
         potential_session = self.potential_sessions.pop(peer)
@@ -158,11 +169,11 @@ class SessionsStateMachine:
         # Buffer the user message
         self.pending_sessions[peer].buffer_message(user_message)
 
-    def pend_message(self, peer: PubKeyDigest, message: CansMessage) -> None:
+    def pend_message(self, peer: str, message: CansMessage) -> None:
         """Buffer a pending user message."""
         self.pending_sessions[peer].buffer_message(message)
 
-    def flush_pending_session(self, peer: PubKeyDigest) -> List[CansMessage]:
+    def flush_pending_session(self, peer: str) -> List[CansMessage]:
         """Flush messages buffered while waiting for session ACK."""
         backlog = self.pending_sessions[peer].buffered_messages
         self.pending_sessions[peer].buffered_messages = []

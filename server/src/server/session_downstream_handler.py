@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Callable, Dict
 
-from common.keys import PubKeyDigest
 from common.messages import (
     CansMessage,
     PeerLogin,
@@ -25,7 +24,7 @@ class SessionDownstreamHandler:
 
     def __init__(
         self,
-        sessions: Dict[PubKeyDigest, ClientSession],
+        sessions: Dict[str, ClientSession],
         get_one_time_key_callback: Callable,
     ) -> None:
         """Construct the downstream handler."""
