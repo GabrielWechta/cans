@@ -86,18 +86,18 @@ class ConnectionListener:
                 identity_key,
                 one_time_keys,
             ) = await self.__authenticate_user(conn)
-            public_key_digest = digest_key(public_key)
+            user_id = digest_key(public_key)
             self.log.debug(
                 f"Successfully authenticated user at {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]} with public key {public_key}"
-                + f" (digest: {public_key_digest})"
+                + f" (digest: {user_id})"
             )
             # User has been successfully authenticated,
             # delegate further handling to the session
             # manager
             await self.session_manager.authed_user_entry(
                 conn=conn,
-                public_key_digest=public_key_digest,
+                user_id=user_id,
                 subscriptions=subscriptions,
                 identity_key=identity_key,
                 one_time_keys=one_time_keys,
@@ -107,7 +107,8 @@ class ConnectionListener:
                 f"User authentication failed: {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]}"
             )
-            return
+            # Terminate the connection with application error code
+            await conn.close(code=3000, reason="Authentication failed")
         except Exception:
             self.log.error("Unexpected error occurred!", exc_info=True)
 

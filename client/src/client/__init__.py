@@ -38,14 +38,14 @@ class Client:
             self.password = self.startup.get_key(user_passphrase)
             self.startup.cans_setup()
             self.startup.generate_key_pair(self.password)
-            self.pub_key, self.priv_key = self.startup.load_key_pair(
+            self.priv_key, self.pub_key = self.startup.load_key_pair(
                 self.password
             )
             self.account = self.startup.create_crypto_account(user_passphrase)
         else:
             user_passphrase = "SafeAndSecurePassword2137"
             self.password = self.startup.get_key(user_passphrase)
-            self.pub_key, self.priv_key = self.startup.load_key_pair(
+            self.priv_key, self.pub_key = self.startup.load_key_pair(
                 self.password
             )
             self.account = self.startup.load_crypto_account(user_passphrase)
@@ -169,4 +169,4 @@ class Client:
 
         logger.setLevel(logging.INFO)
         # NOTE: Uncomment to enable debug logging during development
-        logger.setLevel(logging.DEBUG)
+        # logger.setLevel(logging.DEBUG)

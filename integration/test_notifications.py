@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from typing import Callable, Tuple
+from typing import Callable
 
 import pytest
 import websockets.client as ws
@@ -12,7 +12,7 @@ from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, KeyPair, digest_key
+from common.keys import PKI_CURVE_NAME, EcPemKeyPair, digest_key
 from common.messages import CansMessage, CansMsgId
 
 
@@ -43,7 +43,7 @@ class MockClient(Client):
 
     def __init__(
         self,
-        my_keys: KeyPair,
+        my_keys: EcPemKeyPair,
         peer_pub_key: str,
         session_manager_constructor: Callable,
     ) -> None:
@@ -91,7 +91,7 @@ class MockClient(Client):
                     self.log.error("Received PEER_LOGOUT but no PEER_LOGIN")
 
 
-def __generate_keys() -> Tuple[str, str]:
+def __generate_keys() -> EcPemKeyPair:
     """Generate key pair."""
     ec_key = ECC.generate(curve=PKI_CURVE_NAME)
     private_key = ec_key.export_key(format="PEM")

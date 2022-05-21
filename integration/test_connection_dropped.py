@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from typing import Callable, Tuple
+from typing import Callable
 
 import websockets.client as ws
 from Cryptodome.PublicKey import ECC
@@ -11,7 +11,7 @@ from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, KeyPair
+from common.keys import PKI_CURVE_NAME, EcPemKeyPair
 
 
 class FaultyClientException(Exception):
@@ -54,7 +54,7 @@ class MockClient(Client):
     """Mock client."""
 
     def __init__(
-        self, keys: KeyPair, session_manager_constructor: Callable
+        self, keys: EcPemKeyPair, session_manager_constructor: Callable
     ) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
@@ -87,7 +87,7 @@ class MockClient(Client):
         )
 
 
-def __generate_keys() -> Tuple[str, str]:
+def __generate_keys() -> EcPemKeyPair:
     """Generate key pair."""
     ec_key = ECC.generate(curve=PKI_CURVE_NAME)
     private_key = ec_key.export_key(format="PEM")
