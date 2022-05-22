@@ -146,9 +146,5 @@ log/
 # Ignore olm repository
 resources/olm
 
-# Ignore sqlcipher repository
-resources/sqlcipher
-resources/sqlcipher3
-
 # ignore custom fish scipts
 *.fish

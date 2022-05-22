@@ -11,13 +11,7 @@ from typing import Tuple
 
 from playhouse.sqlcipher_ext import SqlCipherDatabase
 
-from client.database_models import (
-    CansMessageState,
-    Friend,
-    Message,
-    Setting,
-    db_proxy,
-)
+from .models import CansMessageState, Friend, Message, Setting, db_proxy
 
 
 class DatabaseManager:
