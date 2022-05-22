@@ -53,7 +53,7 @@ class SessionUpstreamHandler:
                 # TODO: Should we terminate the connection here?
                 self.log.warning(
                     "Received malformed message from"
-                    + f" {session.public_key_digest}:"
+                    + f" {session.user_id}:"
                     + f" id={message.header.msg_id},"
                     + f" sender={message.header.sender},"
                     + f" receiver={message.header.receiver}"
@@ -93,7 +93,7 @@ class SessionUpstreamHandler:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
         keys = message.payload["keys"]
         self.log.debug(
-            f"User '{session.public_key_digest}' replenished"
+            f"User '{session.user_id}' replenished"
             + f" {len(keys)} one-time keys"
         )
         # TODO: Is any validation of the keys needed? This is authenticated
@@ -104,4 +104,4 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> bool:
         """Validate an inbound message with regards to the current session."""
-        return message.header.sender == session.public_key_digest
+        return message.header.sender == session.user_id

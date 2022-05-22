@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import os
-from typing import Tuple
 
 import pytest
 import websockets.client as ws
@@ -13,7 +12,7 @@ from websockets.exceptions import ConnectionClosed
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, KeyPair
+from common.keys import PKI_CURVE_NAME, EcPemKeyPair
 
 
 class MockSessionManager(SessionManager):
@@ -35,7 +34,7 @@ class MockSessionManager(SessionManager):
 class MockClient(Client):
     """Mock client."""
 
-    def __init__(self, keys: KeyPair) -> None:
+    def __init__(self, keys: EcPemKeyPair) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
@@ -68,7 +67,7 @@ class MockClient(Client):
         )
 
 
-def __generate_keys() -> Tuple[str, str]:
+def __generate_keys() -> EcPemKeyPair:
     """Generate key pair."""
     ec_key = ECC.generate(curve=PKI_CURVE_NAME)
     private_key = ec_key.export_key(format="PEM")
