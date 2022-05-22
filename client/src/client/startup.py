@@ -88,13 +88,13 @@ class Startup:
             (drive_UUID + cpu_model + username).encode()
         ).hexdigest()
 
-    def get_key(self, passphrase: str = "") -> bytes:
+    def get_key(self, passphrase: str = "") -> str:
         """Derive AES key based on argon2 hash of hwf and passphrase."""
         return hashlib.sha256(
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
-        ).digest()
+        ).hexdigest()
 
-    def generate_key_pair(self, password: bytes) -> None:
+    def generate_key_pair(self, password: str) -> None:
         """Run OpenSSL to generate a pair of EC keys.
 
         Save generated values to the .cans/keys directory.
@@ -116,7 +116,7 @@ class Startup:
             shell=True,
         )
 
-    def decrypt_key_pair(self, password: bytes) -> EcPemKeyPair:
+    def decrypt_key_pair(self, password: str) -> EcPemKeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
         priv_key = ""

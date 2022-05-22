@@ -51,7 +51,7 @@ class Client:
             self.account = self.startup.load_crypto_account(user_passphrase)
 
         self.event_loop = asyncio.get_event_loop()
-        self.db_manager = DatabaseManager()
+        self.db_manager = DatabaseManager(self.startup.db_path, self.password)
 
         # Set identity
         self.myself = UserModel(
