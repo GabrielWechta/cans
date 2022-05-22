@@ -5,8 +5,9 @@ fetching/committing application-specific data.
 """
 
 import logging
-from datetime import date
+from datetime import datetime
 from pathlib import Path
+from typing import Tuple
 
 from playhouse.sqlcipher_ext import SqlCipherDatabase
 
@@ -40,7 +41,7 @@ class DatabaseManager:
         pubkeydigest: str,
         username: str,
         chat_color: CansChatColor,
-        date_added: date,
+        date_added: datetime,
     ) -> Friend:
         """Save new friend to the database."""
         return Friend.create(
@@ -65,7 +66,7 @@ class DatabaseManager:
     def get_message_history_with_friend(
         self,
         pubkeydigest: str,
-    ) -> tuple[list, list]:
+    ) -> Tuple[list, list]:
         """Get message history with specific friend.
 
         Returns a tuple with two lists. First one is messages from a specific

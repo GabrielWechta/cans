@@ -1,5 +1,6 @@
 """Define models of tables and data used by the database."""
 
+from datetime import datetime
 from enum import IntEnum, auto, unique
 from typing import Type
 
@@ -42,7 +43,7 @@ class BaseModel(peewee.Model):
     class Meta:
         """Class defining key parameters of a table model."""
 
-        db = db_proxy
+        database = db_proxy
         table_function = make_table_name
 
 
@@ -52,7 +53,7 @@ class Friend(BaseModel):
     pubkeydigest = peewee.CharField(primary_key=True)
     username = peewee.CharField()
     chat_color = peewee.IntegerField()
-    date_added = peewee.DateField()
+    date_added = peewee.DateTimeField(default=datetime.now)
 
 
 class Message(BaseModel):
