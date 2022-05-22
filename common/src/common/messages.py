@@ -1,8 +1,10 @@
 """Define CANS message formats."""
 
 import hashlib
+from datetime import datetime
 from enum import IntEnum, auto, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
+from random import random
 from typing import Any, Dict, List, Optional, Union
 
 from websockets.client import WebSocketClientProtocol
@@ -329,7 +331,7 @@ async def cans_send(
 
 def get_user_message_cookie(receiver: str, text: str) -> str:
     """Digest user message to produce a unique token."""
-    hash_input = receiver + text
+    hash_input = receiver + text + str(datetime.now()) + str(random())
     return hashlib.sha256(hash_input.encode()).hexdigest()
 
 
