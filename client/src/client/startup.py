@@ -9,7 +9,7 @@ from shutil import rmtree
 
 from olm import Account
 
-from common.keys import KeyPair
+from common.keys import EcPemKeyPair
 
 
 class Startup:
@@ -36,7 +36,7 @@ class Startup:
         mkdir(self._keys_dir, mode=0o700)
 
     def is_first_startup(self) -> bool:
-        """Check if user's EC KeyPair exists."""
+        """Check if user's EC EcPemKeyPair exists."""
         pub_key_exists = path.isfile(self.user_public_key_path)
         priv_key_exists = path.isfile(self.user_private_key_path)
         crypto_account_exists = path.isfile(self.crypto_account_path)
@@ -94,7 +94,7 @@ class Startup:
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).digest()
 
-    def generate_key_pair(self, password: bytes) -> KeyPair:
+    def generate_key_pair(self, password: bytes) -> None:
         """Run OpenSSL to generate a pair of EC keys.
 
         Save generated values to the .cans/keys directory.
@@ -116,7 +116,7 @@ class Startup:
             shell=True,
         )
 
-    def load_key_pair(self, password: bytes) -> KeyPair:
+    def load_key_pair(self, password: bytes) -> EcPemKeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
         priv_key = ""
@@ -131,5 +131,4 @@ class Startup:
         # TODO: Decrypt keys
         password = password
 
-        # TODO: Clean up keys before returning them
-        return pub_key, priv_key
+        return priv_key, pub_key

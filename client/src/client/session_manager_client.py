@@ -9,7 +9,7 @@ import websockets.client as ws
 from olm import Account, OlmMessage
 
 from common.keys import (
-    KeyPair,
+    EcPemKeyPair,
     digest_key,
     get_private_key_from_pem,
     get_schnorr_commitment,
@@ -43,7 +43,7 @@ class SessionManager:
 
     def __init__(
         self,
-        keys: KeyPair,
+        keys: EcPemKeyPair,
         account: Account,
     ) -> None:
         """Construct a session manager instance."""

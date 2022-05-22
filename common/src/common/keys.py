@@ -6,7 +6,7 @@ from typing import Tuple
 from Cryptodome.PublicKey import ECC
 
 PublicKeysBundle = Tuple[str, str]
-KeyPair = Tuple[str, str]
+EcPemKeyPair = Tuple[str, str]
 
 PKI_CURVE_NAME = "prime256v1"
 
