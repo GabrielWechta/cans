@@ -1,6 +1,5 @@
 """CANS application UI."""
 import asyncio
-import hashlib
 import os
 from datetime import datetime
 from random import choice
@@ -8,7 +7,8 @@ from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
-from ..models import MessageModel, UserModel
+from ..database_manager_client import DatabaseManager
+from ..models import CansMessageState, Friend, Message
 from .input import InputMode
 from .tiles import ChatTile, Tile
 from .view import View
@@ -21,12 +21,14 @@ class UserInterface:
         self,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
         upstream_callback: Callable,
-        identity: UserModel,
+        identity: Friend,
+        db_manager: DatabaseManager,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
         self.term = Terminal()
         self.loop = loop
+        self.db_manager = db_manager
 
         print(self.term.enter_fullscreen, end="")
 
@@ -34,7 +36,12 @@ class UserInterface:
         self.upstream_callback = upstream_callback
 
         # Instantiate a view
-        self.view = View(term=self.term, loop=self.loop, identity=identity)
+        self.view = View(
+            term=self.term,
+            loop=self.loop,
+            identity=identity,
+            db_manager=self.db_manager,
+        )
 
         # start user input handler
         self.loop.create_task(self._handle_user_input())
@@ -78,7 +85,7 @@ class UserInterface:
             "remove": self.remove_friend,
         }
         """Mapping for slash commands"""
-        self.system_user = UserModel(
+        self.system_user = Friend(
             username="System",
             id="system",
             color="orange_underline",
@@ -102,7 +109,9 @@ class UserInterface:
             ]
             color = choice(colors)
 
-        new_user = UserModel(username=username, id=key, color=color)
+        new_user = self.db_manager.add_friend(
+            username=username, id=key, color=color, date_added=datetime.now()
+        )
         assert new_user
         # TODO: add to database
 
@@ -113,31 +122,12 @@ class UserInterface:
 
     def get_friends(self) -> List:
         """Get list of friends from DB."""
-        # TODO: do it from DB
-        eve = UserModel(
-            username="Eve",
-            id=hashlib.md5("ee".encode("utf-8")).hexdigest(),
-            color="blue",
-        )
-
-        bob = UserModel(
-            username="Bob",
-            id=hashlib.md5("aa".encode("utf-8")).hexdigest(),
-            color="red",
-        )
-
-        jeremiah = UserModel(
-            username="Jeremiah",
-            id=hashlib.md5("jj".encode("utf-8")).hexdigest(),
-            color="pink",
-        )
-
-        friends = [eve, bob, jeremiah]
+        friends = self.db_manager.get_all_friends()
 
         return friends
 
     def on_new_message_received(
-        self, message: Union[MessageModel, str], user: Union[UserModel, str]
+        self, message: Union[Message, str], user: Union[Friend, str]
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
         self.view.add_message(user, message)
@@ -160,10 +150,10 @@ class UserInterface:
             )
 
     def on_system_message_received(
-        self, message: str, relevant_user: Union[UserModel, str, None] = None
+        self, message: str, relevant_user: Union[Friend, str, None] = None
     ) -> None:
         """Handle new system message and add it to proper chat tiles."""
-        message_model = MessageModel(
+        message_model = Message(
             date=datetime.now(),
             body=message,
             from_user=self.system_user,
@@ -278,7 +268,7 @@ class UserInterface:
                         tile.decrement_offset()
                         await tile.render(self.term)
                     else:
-                        new_message = MessageModel(
+                        new_message = Message(
                             from_user=self.myself,
                             to_user=tile.chat_with,  # type: ignore
                             body=input_text,
@@ -288,6 +278,13 @@ class UserInterface:
                         self.view.add_message(
                             tile.chat_with, new_message  # type: ignore
                         )  # type: ignore
+                        self.db_manager.save_message(
+                            body=input_text,
+                            date=datetime.now(),
+                            state=CansMessageState.DELIVERED,
+                            from_user=self.myself.id,
+                            to_user=tile.chat_with.id,
+                        )
                         # pass the message to the client core
                         await self.upstream_callback(new_message)
 

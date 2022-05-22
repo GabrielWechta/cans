@@ -8,7 +8,7 @@ from typing import Any, List, Tuple
 
 from blessed import Terminal, keyboard
 
-from ..models import MessageModel, UserModel
+from ..models import Friend, Message
 from .input import InputMess, InputMode
 
 
@@ -567,9 +567,9 @@ class ChatTile(Tile):
 
     def __init__(
         self,
-        chat_with: UserModel,
-        identity: UserModel,
-        buffer: List[MessageModel],
+        chat_with: Friend,
+        identity: Friend,
+        buffer: List[Message],
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -582,12 +582,12 @@ class ChatTile(Tile):
         self.myself = identity
 
     @property
-    def buffer(self) -> List[MessageModel]:
+    def buffer(self) -> List[Message]:
         """Buffer for loaded messages."""
         return self._buffer
 
     @buffer.setter
-    async def buffer(self, buffer: List[MessageModel]) -> None:
+    async def buffer(self, buffer: List[Message]) -> None:
         """Buffer for loaded messages."""
         self._buffer = buffer
         await self.on_buffer_change()
@@ -606,7 +606,7 @@ class ChatTile(Tile):
         """Reset buffer offset."""
         self.buffer_offset = 0
 
-    async def add_message_to_buffer(self, mess: MessageModel) -> None:
+    async def add_message_to_buffer(self, mess: Message) -> None:
         """Add new message to buffer (newly received for example)."""
         self._buffer.insert(0, mess)
         await self.on_buffer_change()
@@ -626,9 +626,9 @@ class ChatTile(Tile):
         """
         # for debug add message to buffer
         await self.add_message_to_buffer(
-            MessageModel(
-                from_user=UserModel(username="Alice", id="", color=""),
-                to_user=UserModel(username="Alice", id="", color=""),
+            Message(
+                from_user=Friend(username="Alice", id="", color=""),
+                to_user=Friend(username="Alice", id="", color=""),
                 body=inp,
                 date=datetime.now(),
             )

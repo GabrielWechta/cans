@@ -6,9 +6,9 @@ fetching/committing application-specific data.
 
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Tuple
+from typing import List, Optional
 
+import peewee
 from playhouse.sqlcipher_ext import SqlCipherDatabase
 
 from .models import CansMessageState, Friend, Message, Setting, db_proxy
@@ -17,7 +17,7 @@ from .models import CansMessageState, Friend, Message, Setting, db_proxy
 class DatabaseManager:
     """Clientside database manager."""
 
-    def __init__(self, name: Path, password: str) -> None:
+    def __init__(self, name: str, password: str) -> None:
         """Construct the clientside database manager."""
         self.log = logging.getLogger("cans-logger")
         self._db_name = str(name)
@@ -35,18 +35,27 @@ class DatabaseManager:
         username: str,
         color: str,
         date_added: datetime,
-    ) -> Friend:
+    ) -> Optional[Friend]:
         """Save new friend to the database."""
-        return Friend.create(
-            id=id,
-            username=username,
-            color=color,
-            date_added=date_added,
-        )
+        try:
+            return Friend.create(
+                id=id,
+                username=username,
+                color=color,
+                date_added=date_added,
+            )
+        except peewee.IntegrityError:
+            try:
+                return Friend.get(id=id)
+            except peewee.DoesNotExist:
+                return None
 
     def get_all_friends(self) -> list:
         """Get a list of friends from the database."""
-        return list(Friend.select())
+        try:
+            return list(Friend.select())
+        except peewee.DoesNotExist:
+            return []
 
     def save_message(
         self,
@@ -55,31 +64,48 @@ class DatabaseManager:
         state: CansMessageState,
         from_user: str,
         to_user: str,
-    ) -> Message:
+    ) -> Optional[Message]:
         """Save a message to the database.
 
         Sender and receiver are identified by their pubkeydigest.
         """
-        return Message.create(
-            body=body,
-            date=date,
-            state=state.value,
-            from_user=from_user,
-            to_user=to_user,
-        )
+        try:
+            return Message.create(
+                body=body,
+                date=date,
+                state=state.value,
+                from_user=from_user,
+                to_user=to_user,
+            )
+        except peewee.IntegrityError:
+            return None
 
     def get_message_history_with_friend(
         self,
         id: str,
-    ) -> Tuple[list, list]:
+    ) -> List[Message]:
         """Get message history with specific friend.
 
         Returns a tuple with two lists. First one is messages from a specific
         friend and the other contains messages sent to this friend.
-        """
-        friend = Friend.get(Friend.id == id)
 
-        return list(friend.inbox), list(friend.outbox)
+        TODO: we only need messages in and out, this doesnt make sense
+        """
+        try:
+            friend = Friend.get(Friend.id == id)
+        except peewee.DoesNotExist:
+            return []
+        # return list(friend.inbox), list(friend.outbox)
+        try:
+            return list(
+                Message.select()
+                .where(
+                    (Message.from_user == friend) | (Message.to_user == friend)
+                )
+                .order_by(Message.date)
+            )
+        except peewee.DoesNotExist:
+            return []
 
     def create_setting(self, option: str, value: str) -> Setting:
         """Save a new setting to the database."""
