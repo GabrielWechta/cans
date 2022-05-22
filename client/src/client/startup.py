@@ -116,7 +116,7 @@ class Startup:
             shell=True,
         )
 
-    def load_key_pair(self, password: bytes) -> EcPemKeyPair:
+    def decrypt_key_pair(self, password: bytes) -> EcPemKeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
         priv_key = ""
