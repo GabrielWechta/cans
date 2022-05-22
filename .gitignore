@@ -148,3 +148,4 @@ resources/olm
 
 # ignore custom fish scipts
 *.fish
+test/
