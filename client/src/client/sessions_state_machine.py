@@ -36,7 +36,12 @@ from typing import Callable, Dict, List
 
 from olm import Account, OlmMessage, OlmPreKeyMessage
 
-from common.messages import CANS_PEER_HANDSHAKE_MAGIC, CansMessage
+from common.messages import (
+    CANS_PEER_HANDSHAKE_MAGIC,
+    CansMessage,
+    PeerHello,
+    SessionEstablished,
+)
 
 from .e2e_encryption import DoubleRatchetSession
 
@@ -179,7 +184,9 @@ class SessionsStateMachine:
         self.pending_sessions[peer].buffered_messages = []
         return backlog
 
-    def mark_outbound_session_active(self, message: CansMessage) -> None:
+    def mark_outbound_session_active(
+        self, message: SessionEstablished
+    ) -> None:
         """Transition from Pending Session to Active Session."""
         peer = message.header.sender
         self.log.debug(f"Activating outbound session with peer {peer}...")
@@ -189,17 +196,17 @@ class SessionsStateMachine:
         # Run decryption to have the session well established at
         # olm level - without this, olm will continue producing
         # prekey messages
-        olm_message = OlmMessage(message.payload)
+        olm_message = OlmMessage(message.payload["magic"])
         assert (
             self.active_sessions[peer].decrypt(olm_message)
             == CANS_PEER_HANDSHAKE_MAGIC
-        ), "Magic valu in peer handshake invalid"
+        ), "Magic value in peer handshake invalid"
 
-    def activate_inbound_session(self, message: CansMessage) -> None:
+    def activate_inbound_session(self, message: PeerHello) -> None:
         """Activate an inbound session based on a received prekey message."""
         peer = message.header.sender
         self.log.debug(f"Activating inbound session with {peer}...")
-        prekey_message = OlmPreKeyMessage(message.payload)
+        prekey_message = OlmPreKeyMessage(message.payload["magic"])
         # Remove peer from potential/pending sessions if present
         if peer in self.potential_sessions:
             self.potential_sessions.pop(peer)

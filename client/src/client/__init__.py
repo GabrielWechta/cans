@@ -104,7 +104,7 @@ class Client:
 
             # Forward to UI
             self.ui.on_new_message_received(
-                message.payload, message.header.sender
+                message.payload["text"], message.header.sender
             )
 
     async def _handle_downstream_system_traffic(self) -> None:
@@ -123,7 +123,10 @@ class Client:
                 self.ui.on_system_message_received(
                     payload, message.payload["peer"]
                 )
-            elif message.header.msg_id == CansMsgId.PEER_UNAVAILABLE:
+            elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
+                # TODO: Handle delivery acknowledge
+                pass
+            elif message.header.msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
                 payload = Terminal().silver("User is unavailable")
                 self.ui.on_system_message_received(
                     payload, message.payload["peer"]
@@ -139,11 +142,16 @@ class Client:
     ) -> None:
         """Handle an upstream message."""
         receiver = message_model.to_user
-        message = self.session_manager.user_message_to(
+        message, cookie = self.session_manager.user_message_to(
             receiver.id, message_model.body
         )
 
-        self.log.debug(f"Sending message to {message.header.receiver}...")
+        # TODO: Use the cookie to find corresponding acknowledge later
+
+        self.log.debug(
+            f"Sending message to {message.header.receiver}"
+            + f" (cookie: {cookie})..."
+        )
 
         await self.session_manager.send_message(message)
 

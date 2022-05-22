@@ -59,7 +59,7 @@ class MockClient(Client):
         """Send a test message to a peer."""
         # Give the other party time for login
         await asyncio.sleep(1)
-        message = self.session_manager.user_message_to(
+        message, _ = self.session_manager.user_message_to(
             self.test_peer, f"Hello {self.test_peer}"
         )
 
