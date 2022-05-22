@@ -17,6 +17,7 @@ from common.keys import (
 )
 from common.messages import (
     ActiveFriends,
+    AddFriend,
     CansMessage,
     CansMsgId,
     PeerHello,
@@ -111,10 +112,15 @@ class SessionManager:
         """Wait for an incoming system notification."""
         return await self.downstream_system_message_queue.get()
 
+    async def add_friend(self, peer: str) -> None:
+        """Add new friend."""
+        # Send a request to the server
+        request = AddFriend(peer)
+        await self.send_message(request)
+
     def user_message_to(self, peer: str, payload: str) -> UserMessage:
         """Create a user message to a peer."""
         message = UserMessage(peer, payload)
-        message.header.sender = self.identity
         return message
 
     async def _run_server_handshake(
@@ -168,6 +174,8 @@ class SessionManager:
         """Handle upstream traffic, i.e. client to server."""
         while True:
             message = await self.upstream_message_queue.get()
+            # Fill in missing sender
+            message.header.sender = self.identity
             receiver = message.header.receiver
 
             if receiver is None:
@@ -240,7 +248,6 @@ class SessionManager:
     async def __acknowledge_peer_session(self, peer: str) -> None:
         """Send an session established acknowledgement to the peer."""
         acknowledge = SessionEstablished(peer)
-        acknowledge.header.sender = self.identity
         await self.send_message(acknowledge)
 
     async def _handle_message_user_message(self, message: CansMessage) -> None:

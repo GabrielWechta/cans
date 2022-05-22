@@ -35,8 +35,8 @@ class CansMsgId(IntEnum):
     # Miscellaneous client-server API
     PEER_LOGIN = auto()
     PEER_LOGOUT = auto()
-    ADD_SUBSCRIPTION = auto()
-    REMOVE_SUBSCRIPTION = auto()
+    ADD_FRIEND = auto()
+    REMOVE_FRIEND = auto()
     ADD_BLACKLIST = auto()
     REMOVE_BLACKLIST = auto()
     PEER_UNAVAILABLE = auto()  # TODO: Remove this
@@ -183,26 +183,26 @@ class PeerLogout(CansMessage):
         self.payload = {"peer": peer}
 
 
-class AddSubscription(CansMessage):
-    """Add subscription request."""
+class AddFriend(CansMessage):
+    """Add friend request."""
 
-    def __init__(self, subscriptions: List[str]) -> None:
-        """Create an add subscription request."""
+    def __init__(self, friend: str) -> None:
+        """Create an add friend request."""
         super().__init__()
-        self.header.msg_id = CansMsgId.ADD_SUBSCRIPTION
+        self.header.msg_id = CansMsgId.ADD_FRIEND
         self.header.receiver = None
-        self.payload = {"subscriptions": subscriptions}
+        self.payload = {"friend": friend}
 
 
-class RemoveSubscription(CansMessage):
-    """Remove subscription request."""
+class RemoveFriend(CansMessage):
+    """Remove friend request."""
 
-    def __init__(self, subscriptions: List[str]) -> None:
-        """Create a remove subscription request."""
+    def __init__(self, friend: str) -> None:
+        """Create a remove friend request."""
         super().__init__()
-        self.header.msg_id = CansMsgId.REMOVE_SUBSCRIPTION
+        self.header.msg_id = CansMsgId.REMOVE_FRIEND
         self.header.receiver = None
-        self.payload = {"subscriptions": subscriptions}
+        self.payload = {"friend": friend}
 
 
 class AddBlacklist(CansMessage):
