@@ -23,16 +23,6 @@ class CansMessageState(IntEnum):
     NOT_DELIVERED = auto()
 
 
-@unique
-class CansChatColor(IntEnum):
-    """Available chat colors."""
-
-    # TODO add more colors
-    RED = auto()
-    GREEN = auto()
-    BLUE = auto()
-
-
 class BaseModel(peewee.Model):
     """A base model class.
 
@@ -50,21 +40,23 @@ class BaseModel(peewee.Model):
 class Friend(BaseModel):
     """Model for the database table friends."""
 
-    pubkeydigest = peewee.CharField(primary_key=True)
+    id = peewee.CharField(primary_key=True)
     username = peewee.CharField()
-    chat_color = peewee.IntegerField()
-    date_added = peewee.DateTimeField(default=datetime.now)
+    color = peewee.CharField()
+    date_added = peewee.DateTimeField(default=datetime.now())
 
 
 class Message(BaseModel):
     """Model for the database table messages."""
 
     id = peewee.AutoField()
+    body = peewee.TextField()
+    date = peewee.DateTimeField(default=datetime.now())
     state = peewee.IntegerField()
-    sender = peewee.ForeignKeyField(Friend, backref="inbox", lazy_load=False)
-    receiver = peewee.ForeignKeyField(
-        Friend, backref="outbox", lazy_load=False
+    from_user = peewee.ForeignKeyField(
+        Friend, backref="inbox", lazy_load=False
     )
+    to_user = peewee.ForeignKeyField(Friend, backref="outbox", lazy_load=False)
 
 
 class Setting(BaseModel):

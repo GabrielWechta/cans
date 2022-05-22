@@ -12,7 +12,6 @@ from typing import Tuple
 from playhouse.sqlcipher_ext import SqlCipherDatabase
 
 from client.database_models import (
-    CansChatColor,
     CansMessageState,
     Friend,
     Message,
@@ -38,16 +37,16 @@ class DatabaseManager:
 
     def add_friend(
         self,
-        pubkeydigest: str,
+        id: str,
         username: str,
-        chat_color: CansChatColor,
+        color: str,
         date_added: datetime,
     ) -> Friend:
         """Save new friend to the database."""
         return Friend.create(
-            pubkeydigest=pubkeydigest,
+            id=id,
             username=username,
-            chat_color=chat_color.value,
+            color=color,
             date_added=date_added,
         )
 
@@ -56,23 +55,35 @@ class DatabaseManager:
         return list(Friend.select())
 
     def save_message(
-        self, state: CansMessageState, sender: str, receiver: str
+        self,
+        body: str,
+        date: datetime,
+        state: CansMessageState,
+        from_user: str,
+        to_user: str,
     ) -> Message:
-        """Save a message to the database."""
+        """Save a message to the database.
+
+        Sender and receiver are identified by their pubkeydigest.
+        """
         return Message.create(
-            state=state.value, sender=sender, receiver=receiver
+            body=body,
+            date=date,
+            state=state.value,
+            from_user=from_user,
+            to_user=to_user,
         )
 
     def get_message_history_with_friend(
         self,
-        pubkeydigest: str,
+        id: str,
     ) -> Tuple[list, list]:
         """Get message history with specific friend.
 
         Returns a tuple with two lists. First one is messages from a specific
         friend and the other contains messages sent to this friend.
         """
-        friend = Friend.get(Friend.pubkeydigest == pubkeydigest)
+        friend = Friend.get(Friend.id == id)
 
         return list(friend.inbox), list(friend.outbox)
 
