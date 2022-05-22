@@ -51,7 +51,9 @@ class SessionManager:
         self.downstream_handler = SessionDownstreamHandler(
             self.sessions, self.__get_one_time_key
         )
-        self.upstream_handler = SessionUpstreamHandler(self.__route_message)
+        self.upstream_handler = SessionUpstreamHandler(
+            self.sessions, self.__route_message
+        )
 
     async def authed_user_entry(
         self,
@@ -187,7 +189,7 @@ class SessionManager:
     ) -> None:
         # Add subscriptions to the database
         for peer in subscriptions:
-            self.log.debug(f"User '{user_id}' subscribing for {peer}")
+            self.log.debug(f"User '{user_id}' subscribing for '{peer}'")
             await self.database_manager.add_subscriber_of(peer, user_id)
 
     async def __handle_connection_closed(
