@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from client.database_manager_client import DatabaseManager
-from client.database_models import CansMessageState
+from client.models import CansMessageState
 
 
 @pytest.fixture()
