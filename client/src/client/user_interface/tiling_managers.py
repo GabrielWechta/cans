@@ -251,6 +251,7 @@ class MonadTallLayout:
             return "Max amount of tiles reached"
 
         self.tiles.add(tile, tile_position=MonadTallLayout.new_tile_position)
+
         self.cmd_normalize()
         return None
 

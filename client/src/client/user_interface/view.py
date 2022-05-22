@@ -10,7 +10,7 @@ import logging
 import signal
 from datetime import datetime
 from threading import Event
-from typing import Any, Callable, List, Union
+from typing import Any, Callable, List, Mapping, Union
 
 from blessed import Terminal
 
@@ -97,6 +97,165 @@ class View:
         # render the screen
         loop.run_until_complete(self.render_all())
 
+    def get_message_history(self, user: UserModel) -> List[MessageModel]:
+        """Get message history for a given user."""
+        # TODO: do it from DB
+        eve = UserModel(
+            username="Eve",
+            id=hashlib.md5("ee".encode("utf-8")).hexdigest(),
+            color="blue",
+        )
+
+        bob = UserModel(
+            username="Bob",
+            id=hashlib.md5("aa".encode("utf-8")).hexdigest(),
+            color="red",
+        )
+
+        messages_with_bob = [
+            MessageModel(
+                from_user=self.myself,
+                to_user=bob,
+                body="don't know... let's try:",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                to_user=self.myself,
+                from_user=bob,
+                body=f"Okay that's { self.term.lightgreen_bold('cool') }, "
+                "but do we have markdown support?",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=self.myself,
+                to_user=bob,
+                body=self.term.blue_underline(
+                    "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                ),
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=self.myself,
+                to_user=bob,
+                body="Observe",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=bob,
+                to_user=self.myself,
+                body="No way dude",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=self.myself,
+                to_user=bob,
+                body="You know we can post links here?",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=bob,
+                to_user=self.myself,
+                body="What do you want",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=self.myself,
+                to_user=bob,
+                body="Hi",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=bob,
+                to_user=self.myself,
+                body="Hello",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+        ]
+
+        messages_with_eve = [
+            MessageModel(
+                from_user=self.myself,
+                to_user=eve,
+                body="don't know... let's try:",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=eve,
+                to_user=self.myself,
+                body="hello there",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+            MessageModel(
+                from_user=self.myself,
+                to_user=eve,
+                body="heya",
+                date=datetime(
+                    year=2022, month=3, day=21, hour=11, minute=36, second=15
+                ),
+            ),
+        ]
+
+        messages = {
+            "bob": messages_with_bob,
+            "eve": messages_with_eve,
+        }
+
+        if user.username.lower() in messages:
+            return messages[user.username.lower()]
+        else:
+            return []
+
+    def get_friends(self) -> Mapping[str, UserModel]:
+        """Get list of friends from DB as username:UserModel dict."""
+        # TODO: do it from DB
+        eve = UserModel(
+            username="Eve",
+            id=hashlib.md5("ee".encode("utf-8")).hexdigest(),
+            color="blue",
+        )
+
+        bob = UserModel(
+            username="Bob",
+            id=hashlib.md5("aa".encode("utf-8")).hexdigest(),
+            color="red",
+        )
+
+        jeremiah = UserModel(
+            username="Jeremiah",
+            id=hashlib.md5("jj".encode("utf-8")).hexdigest(),
+            color="pink",
+        )
+
+        friends = [eve, bob, jeremiah]
+
+        friends_dict = {}
+        for friend in friends:
+            friends_dict[friend.username.lower()] = friend
+
+        return friends_dict
+
     async def render_all(self) -> None:
         """Render header, footer and layout."""
         await (self.layout.render_all())
@@ -123,8 +282,19 @@ class View:
         self.loop.create_task(self.header.render(self.term))
         self.on_resize_event.set()
 
-    def add_chat(self, chat_with: UserModel) -> None:
+    def add_chat(self, chat_with: Union[UserModel, str]) -> None:
         """Add a chat tile with a given user."""
+        # TODO: get it from DB
+        if isinstance(chat_with, str):
+            chat_with = chat_with.lower()
+            friends = self.get_friends()
+            if chat_with in friends:
+                chat_with = friends[chat_with]
+            else:
+                raise Exception(f"Unknown user: {chat_with}")
+
+        history = self.get_message_history(chat_with)
+
         # get the color attribute from terminal
         color = getattr(self.term, chat_with.color)
 
@@ -133,9 +303,41 @@ class View:
             chat_with=chat_with,
             title=f"Chat with {color(chat_with.username)}",
             identity=self.myself,
+            buffer=history,
         )
         self.layout.add(chat)
-        self.loop.create_task(self.layout.render_all())
+        # self.loop.create_task(self.layout.render_all())
+
+    def swap_chat(self, chat_with: Union[UserModel, str]) -> None:
+        """Add swap current tile with a new chat with given user."""
+        tile_before = self.layout.current_tile
+
+        # TODO: get it from DB
+        if isinstance(chat_with, str):
+            friends = self.get_friends()
+            if chat_with in friends:
+                chat_with = friends[chat_with]
+            else:
+                raise Exception(f"Unknown user: {chat_with}")
+
+        # Already chatting with that user, do nothing
+        if isinstance(tile_before, ChatTile):
+            if chat_with.id == tile_before.chat_with.id:
+                return
+
+        # add new chat
+        self.add_chat(chat_with)
+        tile_after = self.layout.current_tile
+
+        assert isinstance(tile_before, ChatTile) and isinstance(
+            tile_after, ChatTile
+        )
+
+        # swap the tiles
+        self.layout.cmd_swap(tile_after, tile_before)
+
+        # delete the old tile
+        self.layout.remove(tile_before)
 
     def find_chats(self, chats_with: Union[UserModel, str]) -> List[ChatTile]:
         """Find chat tiles with a given user or user id."""
