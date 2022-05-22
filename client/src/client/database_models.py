@@ -1,5 +1,6 @@
-"""Define models of tables used by the database."""
+"""Define models of tables and data used by the database."""
 
+from enum import IntEnum, auto, unique
 from typing import Type
 
 import peewee
@@ -11,6 +12,24 @@ def make_table_name(model_class: Type[peewee.Model]) -> str:
     """Create a naming convention for the tables."""
     model_name = model_class.__name__
     return model_name.lower() + "s"
+
+
+@unique
+class CansMessageState(IntEnum):
+    """State of a cans message in the database."""
+
+    DELIVERED = auto()
+    NOT_DELIVERED = auto()
+
+
+@unique
+class CansChatColor(IntEnum):
+    """Available chat colors."""
+
+    # TODO add more colors
+    RED = auto()
+    GREEN = auto()
+    BLUE = auto()
 
 
 class BaseModel(peewee.Model):
@@ -32,7 +51,7 @@ class Friend(BaseModel):
 
     pubkeydigest = peewee.CharField(primary_key=True)
     username = peewee.CharField()
-    chat_color = peewee.CharField()
+    chat_color = peewee.IntegerField()
     date_added = peewee.DateField()
 
 
@@ -40,10 +59,10 @@ class Message(BaseModel):
     """Model for the database table messages."""
 
     id = peewee.AutoField()
-    state = peewee.CharField()
-    sender = peewee.ForeignKeyField(Friend, backref="sent", lazy_load=False)
+    state = peewee.IntegerField()
+    sender = peewee.ForeignKeyField(Friend, backref="inbox", lazy_load=False)
     receiver = peewee.ForeignKeyField(
-        Friend, backref="received", lazy_load=False
+        Friend, backref="outbox", lazy_load=False
     )
 
 

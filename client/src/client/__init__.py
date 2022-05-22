@@ -52,6 +52,7 @@ class Client:
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager(self.startup.db_path, self.password)
+        self.db_manager.initialize()
 
         # Set identity
         self.myself = UserModel(
