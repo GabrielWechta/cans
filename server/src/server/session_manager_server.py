@@ -11,7 +11,7 @@ from common.keys import PublicKeysBundle
 from common.messages import (
     ActiveFriends,
     CansMessage,
-    PeerUnavailable,
+    NackMessageNotDelivered,
     cans_send,
 )
 from server.session_downstream_handler import SessionDownstreamHandler
@@ -24,7 +24,6 @@ from .session_event import (
     LogoutEvent,
     MessageEvent,
     ReplenishKeysEvent,
-    SessionEvent,
 )
 
 
@@ -105,15 +104,16 @@ class SessionManager:
                 f"Receiver '{receiver}' online." + " Sending event..."
             )
             event = MessageEvent(message)
-            await self.__send_event(event, self.sessions[receiver])
+            await self.downstream_handler.send_event(event, receiver)
         elif sender:
             # Do not reroute server messages so as to not get
             # into an infinite recursion
-
-            # TODO: Include a cookie or send back the user message
-            # so that the client can try resending or otherwise
-            # respond appropriately
-            notification = PeerUnavailable(receiver=sender, peer=receiver)
+            notification = NackMessageNotDelivered(
+                receiver=sender,
+                message_target=receiver,
+                cookie=message.payload["cookie"],
+                reason="Peer unavailable",
+            )
             self.log.debug(
                 f"Receiver '{receiver}' not available."
                 + " Sending notification back to"
@@ -144,7 +144,7 @@ class SessionManager:
             event = ReplenishKeysEvent(
                 self.MAX_ONE_TIME_KEYS - session.remaining_keys()
             )
-            await self.__send_event(event, session)
+            await self.downstream_handler.send_event(event, client)
         return key
 
     async def __handle_active_friends_notification(
@@ -176,7 +176,7 @@ class SessionManager:
             if sub in self.sessions.keys():
                 # Send a login event to all interested parties
                 event = event_constructor(user_id)
-                await self.__send_event(event, self.sessions[sub])
+                await self.downstream_handler.send_event(event, sub)
 
         self.log.debug(f"Sent login notification to {len(subscribers)} users")
 
@@ -203,13 +203,3 @@ class SessionManager:
 
         # Notify all subscribers
         await self.__notify_subscribers(user_id, LogoutEvent)
-
-    async def __send_event(
-        self, event: SessionEvent, session: ClientSession
-    ) -> None:
-        """Send an event.
-
-        The event shall be handled in the relevant session's
-        downstream handler.
-        """
-        await session.event_queue.put(event)

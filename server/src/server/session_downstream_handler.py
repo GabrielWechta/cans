@@ -4,7 +4,9 @@ import logging
 from typing import Any, Callable, Dict
 
 from common.messages import (
+    AckMessageDelivered,
     CansMessage,
+    CansMsgId,
     PeerLogin,
     PeerLogout,
     ReplenishOneTimeKeysReq,
@@ -12,7 +14,7 @@ from common.messages import (
 )
 from server.client_session import ClientSession
 
-from .session_event import EventType, SessionEvent
+from .session_event import EventType, MessageEvent, SessionEvent
 
 
 class SessionDownstreamHandler:
@@ -55,17 +57,40 @@ class SessionDownstreamHandler:
             else:
                 self.log.warning(f"Unsupported event type: {event.event_type}")
 
+    async def send_event(self, event: SessionEvent, client: str) -> None:
+        """Send an event.
+
+        The event shall be handled in the relevant session's
+        downstream handler.
+        """
+        session = self.sessions[client]
+        await session.event_queue.put(event)
+
     async def __handle_event_message(
         self, event: SessionEvent, session: ClientSession
     ) -> None:
         """Handle session event of type MESSAGE."""
         message: CansMessage = event.payload
-        self.log.debug(
-            f"Received message '{message.payload}' from"
-            + f" '{message.header.sender}'"
-        )
+
         # Forward the user message downstream to the client
         await cans_send(message, session.connection)
+
+        # Acknowledge user messages
+        if message.header.msg_id == CansMsgId.USER_MESSAGE:
+            await self.__ack_user_message(message)
+
+    async def __ack_user_message(self, message: CansMessage) -> None:
+        """Send delivery acknowledgement back to sender."""
+        sender = message.header.sender
+
+        ack_message = AckMessageDelivered(
+            receiver=sender,
+            message_target=message.header.receiver,
+            cookie=message.payload["cookie"],
+        )
+
+        event = MessageEvent(ack_message)
+        await self.send_event(event, sender)
 
     async def __handle_event_login(
         self, event: SessionEvent, session: ClientSession
