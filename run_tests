@@ -17,6 +17,10 @@ export CANS_SERVER_HOSTNAME=localhost
 echo "Running integration tests..."
 pytest integration
 
+echo "Running client tests..."
+pytest client/tests
+rm test.db
+
 echo "Stopping the server..."
 docker-compose down
 echo "All done"

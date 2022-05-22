@@ -41,6 +41,17 @@ RUN make olm-python3
 
 WORKDIR /usr/src/app
 
+# installing SQLCipher
+RUN apt-get update && apt-get install -y \
+        sqlcipher \
+        libsqlcipher-dev \
+        libsqlcipher0 \
+        libssl-dev \
+        gcc
+
+
+WORKDIR /usr/src/app
+
 # Copy required modules
 COPY client client
 COPY common common
