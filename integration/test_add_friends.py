@@ -67,7 +67,6 @@ class MockClient(Client):
         )
 
         while True:
-            self.log.debug("Blocking on receive_system_message()...")
             message: CansMessage = (
                 await self.session_manager.receive_system_message()
             )
@@ -90,7 +89,7 @@ def __generate_keys() -> EcPemKeyPair:
     return private_key, public_key
 
 
-async def impl_test_add_friends():
+async def impl_test_add_online_friend():
     """Async implementation of the test."""
     alice_secret, alice_public = __generate_keys()
     bob_secret, bob_public = __generate_keys()
@@ -105,7 +104,7 @@ async def impl_test_add_friends():
 
     # Start Bob first...
     bob_future = asyncio.create_task(bob.run())
-    # ...then wait a little...
+    # ...then wait a little for Bob to log in...
     await asyncio.sleep(1)
     # ...and start Alice
     alice_future = asyncio.gather(
@@ -126,7 +125,53 @@ async def impl_test_add_friends():
     )
 
 
-def test_add_friends():
-    """Test adding new friends."""
+async def impl_test_add_offline_friend():
+    """Async implementation of the test."""
+    alice_secret, alice_public = __generate_keys()
+    bob_secret, bob_public = __generate_keys()
+
+    alice = MockClient(
+        my_keys=(alice_secret, alice_public),
+    )
+
+    bob = MockClient(
+        my_keys=(bob_secret, bob_public),
+    )
+
+    # Start Alice first...
+    alice_future = asyncio.gather(
+        alice.run(),
+        alice.add_friend_and_wait_for_login_notification(
+            digest_key(bob_public)
+        ),
+    )
+    # ...wait a little...
+    await asyncio.sleep(1)
+    # ...and start Bob
+    bob_future = asyncio.create_task(bob.run())
+
+    timeout = 5
+    # Block on both futures
+    await asyncio.wait_for(
+        asyncio.gather(
+            alice_future,
+            bob_future,
+        ),
+        timeout,
+    )
+
+
+def test_add_online_friend():
+    """Test adding a new friend that is currently online."""
     with pytest.raises(AddFriendsOkException):
-        asyncio.get_event_loop().run_until_complete(impl_test_add_friends())
+        asyncio.get_event_loop().run_until_complete(
+            impl_test_add_online_friend()
+        )
+
+
+def test_add_offline_friend():
+    """Test adding a new friend that is currently offline."""
+    with pytest.raises(AddFriendsOkException):
+        asyncio.get_event_loop().run_until_complete(
+            impl_test_add_offline_friend()
+        )
