@@ -8,7 +8,6 @@ from datetime import datetime
 
 from blessed import Terminal
 
-from common.keys import digest_key
 from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
@@ -53,19 +52,15 @@ class Client:
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager(
-            str(self.startup.db_path), self.password
+            name=str(self.startup.db_path),
+            password=self.password,
+            username="Alice",
+            color="blue",
         )
         self.db_manager.initialize()
 
         # Set identity
-        self.myself = self.db_manager.add_friend(
-            username="Alice",
-            id=digest_key(self.pub_key),
-            color="blue",
-            date_added=datetime.now(),
-        )
-
-        assert self.myself
+        assert self.db_manager.myself
 
         self.echo_peer_id = (
             "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
@@ -90,7 +85,7 @@ class Client:
         self.ui = UserInterface(
             loop=self.event_loop,
             upstream_callback=self._handle_upstream_message,
-            identity=self.myself,
+            identity=self.db_manager.myself,
             db_manager=self.db_manager,
         )
 
@@ -124,13 +119,14 @@ class Client:
             self.log.debug(f"Received message from {message.header.sender}")
 
             # TODO: Add support for message from unknown user
-            assert self.myself
+            assert self.db_manager.myself
             self.db_manager.save_message(
+                id=message.payload["cookie"],
                 body=message.payload["text"],
                 date=datetime.now(),
                 state=CansMessageState.DELIVERED,
                 from_user=message.header.sender,
-                to_user=self.myself.id,
+                to_user=self.db_manager.myself.id,
             )
 
             # Forward to UI
