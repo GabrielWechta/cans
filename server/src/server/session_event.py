@@ -40,17 +40,17 @@ class MessageEvent(SessionEvent):
 class LoginEvent(SessionEvent):
     """A user login event."""
 
-    def __init__(self, peer_key_digest: str) -> None:
+    def __init__(self, peer_id: str) -> None:
         """Initialize a login event."""
-        super().__init__(EventType.LOGIN, {"peer": peer_key_digest})
+        super().__init__(EventType.LOGIN, {"peer": peer_id})
 
 
 class LogoutEvent(SessionEvent):
     """A user logout event."""
 
-    def __init__(self, peer_key_digest: str) -> None:
+    def __init__(self, peer_id: str) -> None:
         """Initialize a logout event."""
-        super().__init__(EventType.LOGOUT, {"peer": peer_key_digest})
+        super().__init__(EventType.LOGOUT, {"peer": peer_id})
 
 
 class ReplenishKeysEvent(SessionEvent):

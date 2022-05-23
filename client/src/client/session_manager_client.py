@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import ssl
-from typing import List
+from typing import List, Tuple
 
 import websockets.client as ws
 from olm import Account, OlmMessage
@@ -60,10 +60,13 @@ class SessionManager:
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self._handle_message_user_message,
             CansMsgId.PEER_HELLO: self._handle_message_peer_hello,
-            CansMsgId.PEER_UNAVAILABLE: self._handle_message_peer_unavailable,
             CansMsgId.PEER_LOGIN: self._handle_message_peer_login,
             CansMsgId.PEER_LOGOUT: self._handle_message_peer_logout,
             # fmt: off
+            CansMsgId.ACK_MESSAGE_DELIVERED:
+                self.__handle_message_ack_message_delivered,
+            CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
+                self.__handle_message_nack_message_not_delivered,
             CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ:
                 self._handle_message_replenish_one_time_keys_req,
             CansMsgId.SESSION_ESTABLISHED:
@@ -118,10 +121,12 @@ class SessionManager:
         request = AddFriend(peer)
         await self.send_message(request)
 
-    def user_message_to(self, peer: str, payload: str) -> UserMessage:
+    def user_message_to(
+        self, peer: str, payload: str
+    ) -> Tuple[UserMessage, str]:
         """Create a user message to a peer."""
         message = UserMessage(peer, payload)
-        return message
+        return message, message.payload["cookie"]
 
     async def _run_server_handshake(
         self, conn: ws.WebSocketClientProtocol, friends: List[str]
@@ -193,7 +198,7 @@ class SessionManager:
                 # Send a hello message first
                 message = PeerHello(receiver)
                 message.header.sender = self.identity
-                message = self._encrypt_user_payload(message)
+                message = self._encrypt_message_payload(message)
                 await cans_send(message, conn)
                 # The buffered user message will be sent as soon as session
                 # is established
@@ -206,7 +211,7 @@ class SessionManager:
                 self.session_sm.pend_message(receiver, message)
             elif self.session_sm.active_session_with(receiver):
                 # Well-established session, encrypt the payload
-                message = self._encrypt_user_payload(message)
+                message = self._encrypt_message_payload(message)
                 await cans_send(message, conn)
             else:
                 self.log.warning(
@@ -255,7 +260,9 @@ class SessionManager:
         sender = message.header.sender
 
         if sender in self.session_sm.active_sessions.keys():
-            message = self._decrypt_user_payload(message)
+            message.payload["text"] = self._decrypt_text(
+                sender, message.payload["text"]
+            )
             await self.downstream_user_message_queue.put(message)
         else:
             self.log.warning(
@@ -293,16 +300,6 @@ class SessionManager:
             # Send ACK to the other party
             await self.__acknowledge_peer_session(peer)
 
-    async def _handle_message_peer_unavailable(
-        self, message: CansMessage
-    ) -> None:
-        """Handle message type PEER_UNAVAILABLE."""
-        peer = message.payload["peer"]
-
-        # TODO-UI implement behaviour of peer unavailable
-        self.log.warning(f"Peer {peer} unavailable!")
-        await self.downstream_system_message_queue.put(message)
-
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
         peer = message.payload["peer"]
@@ -324,6 +321,24 @@ class SessionManager:
 
         # TODO-UI implement behaviour of user logout
         self.log.info(f"Peer {peer} just logged out!")
+        await self.downstream_system_message_queue.put(message)
+
+    async def __handle_message_ack_message_delivered(
+        self, message: CansMessage
+    ) -> None:
+        """Handle message type ACK_MESSAGE_DELIVERED."""
+        cookie = message.payload["cookie"]
+        self.log.debug(f"Received ACK for message with cookie {cookie}")
+        await self.downstream_system_message_queue.put(message)
+
+    async def __handle_message_nack_message_not_delivered(
+        self, message: CansMessage
+    ) -> None:
+        """Handle message type NACK_MESSAGE_NOT_DELIVERED."""
+        peer = message.payload["message_target"]
+
+        # TODO-UI implement behaviour of peer unavailable
+        self.log.warning(f"Peer {peer} unavailable!")
         await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_replenish_one_time_keys_req(
@@ -357,18 +372,38 @@ class SessionManager:
         for message in pending_messages:
             await self.send_message(message)
 
-    def _encrypt_user_payload(self, message: CansMessage) -> str:
-        """Encrypt the payload of a user message."""
+    def _encrypt_message_payload(self, message: CansMessage) -> CansMessage:
+        """Encrypt different parts of the payload depending on message ID."""
         receiver = message.header.receiver
-        encrypt = self.session_sm.get_encryption_callback(receiver)
-        olm_message = encrypt(message.payload)
-        message.payload = olm_message.ciphertext
+        msg_id = message.header.msg_id
+
+        if msg_id == CansMsgId.USER_MESSAGE:
+            message.payload["text"] = self._encrypt_text(
+                receiver, message.payload["text"]
+            )
+        elif msg_id == CansMsgId.PEER_HELLO:
+            message.payload["magic"] = self._encrypt_text(
+                receiver, message.payload["magic"]
+            )
+        elif msg_id == CansMsgId.SESSION_ESTABLISHED:
+            message.payload["magic"] = self._encrypt_text(
+                receiver, message.payload["magic"]
+            )
+        else:
+            self.log.error(
+                f"Attempted encryption of unsupported message: {msg_id}"
+            )
+
         return message
 
-    def _decrypt_user_payload(self, message: CansMessage) -> str:
+    def _encrypt_text(self, receiver: str, payload: str) -> str:
+        """Encrypt the payload of a user message."""
+        encrypt = self.session_sm.get_encryption_callback(receiver)
+        olm_message = encrypt(payload)
+        return olm_message.ciphertext
+
+    def _decrypt_text(self, sender: str, payload: str) -> str:
         """Decrypt the payload of a user message."""
-        sender = message.header.sender
         decrypt = self.session_sm.get_decryption_callback(sender)
-        olm_message = OlmMessage(message.payload)
-        message.payload = decrypt(olm_message)
-        return message
+        olm_message = OlmMessage(payload)
+        return decrypt(olm_message)

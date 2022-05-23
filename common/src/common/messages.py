@@ -1,7 +1,10 @@
 """Define CANS message formats."""
 
+import hashlib
+from datetime import datetime
 from enum import IntEnum, auto, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
+from random import random
 from typing import Any, Dict, List, Optional, Union
 
 from websockets.client import WebSocketClientProtocol
@@ -39,9 +42,11 @@ class CansMsgId(IntEnum):
     REMOVE_FRIEND = auto()
     ADD_BLACKLIST = auto()
     REMOVE_BLACKLIST = auto()
-    PEER_UNAVAILABLE = auto()  # TODO: Remove this
     REPLENISH_ONE_TIME_KEYS_REQ = auto()
     REPLENISH_ONE_TIME_KEYS_RESP = auto()
+
+    ACK_MESSAGE_DELIVERED = auto()
+    NACK_MESSAGE_NOT_DELIVERED = auto()
 
 
 class CansMessage:
@@ -50,7 +55,7 @@ class CansMessage:
     def __init__(self) -> None:
         """Create a CANS message."""
         self.header = self.CansHeader()
-        self.payload: Any = None
+        self.payload: Dict[str, Any] = {}
 
     class CansHeader:
         """CANS header."""
@@ -65,12 +70,15 @@ class CansMessage:
 class UserMessage(CansMessage):
     """User message."""
 
-    def __init__(self, receiver: str, payload: str) -> None:
+    def __init__(self, receiver: str, text: str) -> None:
         """Create a CANS user message to a peer."""
         super().__init__()
         self.header.msg_id = CansMsgId.USER_MESSAGE
         self.header.receiver = receiver
-        self.payload = payload
+        self.payload = {
+            "text": text,
+            "cookie": get_user_message_cookie(receiver, text),
+        }
 
 
 class PeerHello(CansMessage):
@@ -81,7 +89,9 @@ class PeerHello(CansMessage):
         super().__init__()
         self.header.msg_id = CansMsgId.PEER_HELLO
         self.header.receiver = receiver
-        self.payload = CANS_PEER_HANDSHAKE_MAGIC
+        self.payload = {
+            "magic": CANS_PEER_HANDSHAKE_MAGIC,
+        }
 
 
 class SessionEstablished(CansMessage):
@@ -92,19 +102,7 @@ class SessionEstablished(CansMessage):
         super().__init__()
         self.header.msg_id = CansMsgId.SESSION_ESTABLISHED
         self.header.receiver = receiver
-        self.payload = CANS_PEER_HANDSHAKE_MAGIC
-
-
-class PeerUnavailable(CansMessage):
-    """Peer unavailable notification."""
-
-    def __init__(self, receiver: str, peer: str) -> None:
-        """Create a peer unavailable notification."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.PEER_UNAVAILABLE
-        self.header.receiver = receiver
-        self.header.sender = None
-        self.payload = {"peer": peer}
+        self.payload = {"magic": CANS_PEER_HANDSHAKE_MAGIC}
 
 
 class SchnorrCommit(CansMessage):
@@ -269,6 +267,39 @@ class ReplenishOneTimeKeysResp(CansMessage):
         }
 
 
+class AckMessageDelivered(CansMessage):
+    """Message delivery acknowledgement."""
+
+    def __init__(
+        self, receiver: str, message_target: str, cookie: str
+    ) -> None:
+        """Create a delivery acknowledgement."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.ACK_MESSAGE_DELIVERED
+        self.header.receiver = receiver
+        self.payload = {
+            "target": message_target,
+            "cookie": cookie,
+        }
+
+
+class NackMessageNotDelivered(CansMessage):
+    """Message delivery failed notification."""
+
+    def __init__(
+        self, receiver: str, message_target: str, cookie: str, reason: str
+    ) -> None:
+        """Create a delivery failure notification."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.NACK_MESSAGE_NOT_DELIVERED
+        self.header.receiver = receiver
+        self.payload = {
+            "target": message_target,
+            "cookie": cookie,
+            "reason": reason,
+        }
+
+
 class CansMessageException(Exception):
     """Abstract exception type."""
 
@@ -296,6 +327,12 @@ async def cans_send(
     """Push a CANS message to a socket."""
     serial = __serialize(msg)
     await socket.send(serial)
+
+
+def get_user_message_cookie(receiver: str, text: str) -> str:
+    """Digest user message to produce a unique token."""
+    hash_input = receiver + text + str(datetime.now()) + str(random())
+    return hashlib.sha256(hash_input.encode()).hexdigest()
 
 
 def __serialize(msg: CansMessage) -> CansSerial:
