@@ -4,6 +4,7 @@ import asyncio
 import logging
 import logging.handlers
 import os
+from datetime import datetime
 
 from blessed import Terminal
 
@@ -11,7 +12,7 @@ from common.keys import digest_key
 from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
-from .models import MessageModel, UserModel
+from .models import CansMessageState, Message
 from .session_manager_client import SessionManager
 from .startup import Startup
 from .user_interface import UserInterface
@@ -51,27 +52,49 @@ class Client:
             self.account = self.startup.load_crypto_account(user_passphrase)
 
         self.event_loop = asyncio.get_event_loop()
-        self.db_manager = DatabaseManager(self.startup.db_path, self.password)
+        self.db_manager = DatabaseManager(
+            str(self.startup.db_path), self.password
+        )
         self.db_manager.initialize()
 
         # Set identity
-        self.myself = UserModel(
-            username="Alice", id=digest_key(self.pub_key), color="blue"
+        self.myself = self.db_manager.add_friend(
+            username="Alice",
+            id=digest_key(self.pub_key),
+            color="blue",
+            date_added=datetime.now(),
         )
+
+        assert self.myself
+
         self.echo_peer_id = (
             "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
         )
-        echo_client = UserModel(
-            username="Echo", id=self.echo_peer_id, color="red"
+        echo_client = self.db_manager.add_friend(
+            username="Echo",
+            id=self.echo_peer_id,
+            color="red",
+            date_added=datetime.now(),
         )
+
+        eve_client = self.db_manager.add_friend(
+            username="Eve",
+            id="12341234",
+            color="blue",
+            date_added=datetime.now(),
+        )
+
+        assert echo_client
+        assert eve_client
 
         self.ui = UserInterface(
             loop=self.event_loop,
             upstream_callback=self._handle_upstream_message,
             identity=self.myself,
+            db_manager=self.db_manager,
         )
 
-        self.ui.view.add_chat(echo_client)
+        # self.ui.view.add_chat(echo_client)
 
         self.session_manager = SessionManager(
             keys=(self.priv_key, self.pub_key),
@@ -101,7 +124,14 @@ class Client:
             self.log.debug(f"Received message from {message.header.sender}")
 
             # TODO: Add support for message from unknown user
-            # TODO: Add message to database
+            assert self.myself
+            self.db_manager.save_message(
+                body=message.payload["text"],
+                date=datetime.now(),
+                state=CansMessageState.DELIVERED,
+                from_user=message.header.sender,
+                to_user=self.myself.id,
+            )
 
             # Forward to UI
             self.ui.on_new_message_received(
@@ -138,9 +168,7 @@ class Client:
                     + f" {message.header.msg_id}"
                 )
 
-    async def _handle_upstream_message(
-        self, message_model: MessageModel
-    ) -> None:
+    async def _handle_upstream_message(self, message_model: Message) -> None:
         """Handle an upstream message."""
         receiver = message_model.to_user
         message, cookie = self.session_manager.user_message_to(

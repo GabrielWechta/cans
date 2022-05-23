@@ -8,7 +8,8 @@ from typing import Any, List, Tuple
 
 from blessed import Terminal, keyboard
 
-from ..models import MessageModel, UserModel
+from ..models import Friend, Message
+from .input import InputMess, InputMode
 
 
 class Tile:
@@ -142,7 +143,7 @@ class Tile:
 
     async def render_margins(self, t: Terminal) -> None:
         """Render margins of a tile."""
-        attr = "red" if self.focused else "normal"
+        attr = "purple" if self.focused else "normal"
 
         color = getattr(t, attr)
         if "l" in self._margins:
@@ -220,7 +221,7 @@ class InputTile(Tile):
         self.input_queue: Queue = Queue()
         self.prompt_position = math.floor(self.real_height / 2)
 
-        self.mode = ""
+        self.mode = InputMode.NORMAL
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins etc."""
@@ -260,28 +261,33 @@ class InputTile(Tile):
         self, term: Terminal, loop: BaseEventLoop, on_resize_event: Event
     ) -> None:
         """
-        Input function, REALLY BAD.
+        Input function, kinda better edition.
 
-        TODO: think about better implementation.
+        TODO: think about even better implementation.
         """
-        inp = ""
+        input_text = ""
         prompt_location = self.prompt_location()
-        print(term.move_xy(prompt_location[0], prompt_location[1]), end="")
+        # move cursor to prompt
+        run_coroutine_threadsafe(
+            self.print(term.move_xy(prompt_location[0], prompt_location[1])),
+            loop,
+        )
         # basically run forever
         while True:
-            # set cursor position
             with term.raw():
+                # get starting cursor position
                 prompt_location = self.prompt_location()
-                x_pos = prompt_location[0] + term.length(inp)
+                x_pos = prompt_location[0] + term.length(input_text)
                 y_pos = prompt_location[1]
+
+                val = term.inkey()
+
+                # if in normal mode and input is alphanumeric, move cursor
+                if self.mode == InputMode.NORMAL and self.input_filter(val):
+                    x_pos += 1
 
                 # paste handling, use the first character to check
                 # command type and add rest as additional input
-                val = term.inkey()
-
-                if self.mode == "" and self.input_filter(val):
-                    x_pos += 1
-
                 next = term.inkey(
                     timeout=0.010
                 )  # this is basically polling rate
@@ -290,8 +296,17 @@ class InputTile(Tile):
                     add_input += next
                     next = term.inkey(timeout=0.010)
 
-                print(
-                    term.move_xy(x_pos + term.length(add_input), y_pos), end=""
+                # set cursor position
+                run_coroutine_threadsafe(
+                    self.print(
+                        term.move_xy(
+                            x_pos
+                            + term.length(add_input)
+                            + int(self.mode == InputMode.COMMAND) * 2,
+                            y_pos,
+                        ),
+                    ),
+                    loop,
                 )
                 # we have to somehow now that terminal
                 # has resized from this thread
@@ -307,57 +322,181 @@ class InputTile(Tile):
                     # break the loop to leave raw environment
                     # send a message that we want to quit
                     run_coroutine_threadsafe(
-                        self.input_queue.put(("exit", "")), loop
+                        self.input_queue.put(
+                            InputMess(InputMode.EXIT, "exit")
+                        ),
+                        loop,
                     )
                     break
                 # if normal mode
-                if self.mode == "":
+                if self.mode == InputMode.NORMAL:
                     if val.code == term.KEY_ESCAPE:
-                        self.mode = "layout"
+                        self.mode = InputMode.LAYOUT
+                    elif val == "/" and input_text == "":
+                        self.mode = InputMode.COMMAND
+                        input_text = ""
+                        run_coroutine_threadsafe(
+                            self.display_prompt("/" + input_text, term), loop
+                        )
                     else:
-                        # if enter was pressed, return input
-                        if val.code == term.KEY_ENTER and inp != "":
+                        # if key up or key down is pressed,
+                        # send input to handle buffer scroll
+                        if (
+                            val.code == term.KEY_UP
+                            or val.code == term.KEY_DOWN
+                        ):
                             run_coroutine_threadsafe(
-                                self.input_queue.put((self.mode, inp)), loop
-                            )
-                            print(
-                                term.move_xy(
-                                    prompt_location[0], prompt_location[1]
+                                self.input_queue.put(
+                                    InputMess(self.mode, val.code)
                                 ),
-                                end="",
+                                loop,
                             )
-                            inp = ""
+                        # if enter was pressed, return input
+                        elif val.code == term.KEY_ENTER and input_text != "":
+
+                            run_coroutine_threadsafe(
+                                self.input_queue.put(
+                                    InputMess(self.mode, input_text)
+                                ),
+                                loop,
+                            )
+
+                            run_coroutine_threadsafe(
+                                self.print(
+                                    term.move_xy(
+                                        prompt_location[0], prompt_location[1]
+                                    ),
+                                ),
+                                loop,
+                            )
+                            input_text = ""
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
                         ):
-                            inp = inp[:-1]
-                            print(
-                                term.move_xy(
-                                    prompt_location[0] + term.length(inp),
-                                    prompt_location[1],
+                            input_text = input_text[:-1]
+                            run_coroutine_threadsafe(
+                                self.print(
+                                    term.move_xy(
+                                        prompt_location[0]
+                                        + term.length(input_text),
+                                        prompt_location[1],
+                                    ),
                                 ),
-                                end="",
+                                loop,
                             )
                         elif self.input_filter(val):
-                            inp += val + add_input
+                            input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_prompt(inp, term), loop
+                            self.display_prompt(input_text, term), loop
                         )
                 # if layout mode
-                if self.mode == "layout":
+                elif self.mode == InputMode.LAYOUT:
                     if val.code == term.KEY_ENTER:
-                        self.mode = ""
+                        self.mode = InputMode.NORMAL
+                    elif val == "/":
+                        self.mode = InputMode.COMMAND
+                        input_text = ""
+                        run_coroutine_threadsafe(
+                            self.print(
+                                term.move_xy(
+                                    prompt_location[0] + 1, prompt_location[1]
+                                ),
+                            ),
+                            loop,
+                        )
+                        run_coroutine_threadsafe(
+                            self.display_prompt("/" + input_text, term), loop
+                        )
                     else:
                         if self.input_filter(val) or not val.code:
                             run_coroutine_threadsafe(
-                                self.input_queue.put((self.mode, val)), loop
+                                self.input_queue.put(
+                                    InputMess(self.mode, val)
+                                ),
+                                loop,
                             )
                         else:
                             run_coroutine_threadsafe(
-                                self.input_queue.put((self.mode, val.code)),
+                                self.input_queue.put(
+                                    InputMess(self.mode, val.code)
+                                ),
                                 loop,
                             )
+                # if command mode
+                elif self.mode == InputMode.COMMAND:
+                    if val.code == term.KEY_ESCAPE or (
+                        (
+                            val.code == term.KEY_BACKSPACE
+                            or val.code == term.KEY_DELETE
+                        )
+                        and input_text == ""
+                    ):
+                        self.mode = InputMode.NORMAL
+                        input_text = ""
+
+                        run_coroutine_threadsafe(
+                            self.print(
+                                term.move_xy(
+                                    prompt_location[0], prompt_location[1]
+                                ),
+                            ),
+                            loop,
+                        )
+                        run_coroutine_threadsafe(self.clear_input(term), loop)
+
+                    else:
+                        # if enter was pressed, return input
+                        if val.code == term.KEY_ENTER and input_text != "":
+                            command_with_args = input_text.split(" ")
+                            command = command_with_args[0]
+                            if len(command_with_args) > 1:
+                                args = command_with_args[1:]
+                            else:
+                                args = []
+                            run_coroutine_threadsafe(
+                                self.input_queue.put(
+                                    InputMess(self.mode, (command, args))
+                                ),
+                                loop,
+                            )
+
+                            input_text = ""
+                            self.mode = InputMode.NORMAL
+                            run_coroutine_threadsafe(
+                                self.print(
+                                    term.move_xy(
+                                        prompt_location[0], prompt_location[1]
+                                    ),
+                                ),
+                                loop,
+                            )
+                            run_coroutine_threadsafe(
+                                self.clear_input(term), loop
+                            )
+                            continue
+                        # handle backspace
+                        elif (
+                            val.code == term.KEY_BACKSPACE
+                            or val.code == term.KEY_DELETE
+                        ):
+                            input_text = input_text[:-1]
+                            run_coroutine_threadsafe(
+                                self.print(
+                                    term.move_xy(
+                                        prompt_location[0]
+                                        + term.length(input_text)
+                                        + 1,
+                                        prompt_location[1],
+                                    ),
+                                ),
+                                loop,
+                            )
+                        elif self.input_filter(val):
+                            input_text += val + add_input
+                        run_coroutine_threadsafe(
+                            self.display_prompt("/" + input_text, term), loop
+                        )
         # print(term.exit_fullscreen, end="")
 
     async def clear_input(self, t: Terminal) -> None:
@@ -375,6 +514,10 @@ class InputTile(Tile):
             out = self.truncate_input(text, t)
             out = t.ljust(out, self.real_width)
             print(out, end="")
+
+    async def print(self, text: str) -> None:
+        """Print given message asynchronously."""
+        print(text, end="", flush=True)
 
     def prompt_location(self) -> Tuple[int, int]:
         """Return x and y coordinates of prompt."""
@@ -424,30 +567,46 @@ class ChatTile(Tile):
 
     def __init__(
         self,
-        chat_with: UserModel,
-        identity: UserModel,
+        chat_with: Friend,
+        identity: Friend,
+        buffer: List[Message],
         *args: Any,
         **kwargs: Any,
     ) -> None:
         """Init chat Tile."""
         Tile.__init__(self, *args, **kwargs)
-        self._buffer: List[MessageModel] = []
+        self._buffer = buffer
+        self.buffer_offset = 0
         self.new_messages: Queue = Queue()
         self.chat_with = chat_with
         self.myself = identity
 
     @property
-    def buffer(self) -> List[MessageModel]:
+    def buffer(self) -> List[Message]:
         """Buffer for loaded messages."""
         return self._buffer
 
     @buffer.setter
-    async def buffer(self, buffer: List[MessageModel]) -> None:
+    async def buffer(self, buffer: List[Message]) -> None:
         """Buffer for loaded messages."""
         self._buffer = buffer
         await self.on_buffer_change()
 
-    async def add_message_to_buffer(self, mess: MessageModel) -> None:
+    def increment_offset(self) -> None:
+        """Increment buffer offset."""
+        if self.buffer_offset < len(self._buffer) - 1:
+            self.buffer_offset += 1
+
+    def decrement_offset(self) -> None:
+        """Decrement buffer offset."""
+        if self.buffer_offset > 0:
+            self.buffer_offset -= 1
+
+    def reset_offset(self) -> None:
+        """Reset buffer offset."""
+        self.buffer_offset = 0
+
+    async def add_message_to_buffer(self, mess: Message) -> None:
         """Add new message to buffer (newly received for example)."""
         self._buffer.insert(0, mess)
         await self.on_buffer_change()
@@ -467,9 +626,9 @@ class ChatTile(Tile):
         """
         # for debug add message to buffer
         await self.add_message_to_buffer(
-            MessageModel(
-                from_user=UserModel(username="Alice", id="", color=""),
-                to_user=UserModel(username="Alice", id="", color=""),
+            Message(
+                from_user=Friend(username="Alice", id="", color=""),
+                to_user=Friend(username="Alice", id="", color=""),
                 body=inp,
                 date=datetime.now(),
             )
@@ -481,7 +640,8 @@ class ChatTile(Tile):
 
         # construct message buffer
         buffer = []
-        for mes in self._buffer:
+        for i in range(self.buffer_offset, len(self._buffer)):
+            mes = self._buffer[i]
 
             message = t.gray(mes.date.strftime("[%H:%M]"))
             user_color = getattr(t, mes.from_user.color)

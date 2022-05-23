@@ -53,11 +53,9 @@ class Message(BaseModel):
     id = peewee.AutoField()
     body = peewee.TextField()
     date = peewee.DateTimeField(default=datetime.now())
-    state = peewee.IntegerField()
-    from_user = peewee.ForeignKeyField(
-        Friend, backref="inbox", lazy_load=False
-    )
-    to_user = peewee.ForeignKeyField(Friend, backref="outbox", lazy_load=False)
+    state = peewee.IntegerField(default=CansMessageState.DELIVERED)
+    from_user = peewee.ForeignKeyField(Friend, backref="inbox")
+    to_user = peewee.ForeignKeyField(Friend, backref="outbox")
 
 
 class Setting(BaseModel):

@@ -2,11 +2,14 @@
 import asyncio
 import os
 from datetime import datetime
+from random import choice
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
-from ..models import MessageModel, UserModel
+from ..database_manager_client import DatabaseManager
+from ..models import CansMessageState, Friend, Message
+from .input import InputMode
 from .tiles import ChatTile, Tile
 from .view import View
 
@@ -18,12 +21,14 @@ class UserInterface:
         self,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
         upstream_callback: Callable,
-        identity: UserModel,
+        identity: Friend,
+        db_manager: DatabaseManager,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
         self.term = Terminal()
         self.loop = loop
+        self.db_manager = db_manager
 
         print(self.term.enter_fullscreen, end="")
 
@@ -31,7 +36,12 @@ class UserInterface:
         self.upstream_callback = upstream_callback
 
         # Instantiate a view
-        self.view = View(term=self.term, loop=self.loop, identity=identity)
+        self.view = View(
+            term=self.term,
+            loop=self.loop,
+            identity=identity,
+            db_manager=self.db_manager,
+        )
 
         # start user input handler
         self.loop.create_task(self._handle_user_input())
@@ -63,8 +73,19 @@ class UserInterface:
             # ctrl+d
             chr(4):     self.view.layout.remove,
         }  # fmt: skip
-        """Mapping for layout changing commands"""
-        self.system_user = UserModel(
+        """Key mapping for layout changing commands"""
+
+        self.slash_cmds: Mapping[str, Callable[..., Any]] = {
+            "chat": self.view.add_chat,
+            "swap": self.view.swap_chat,
+            "close": self.view.layout.remove,
+            "help": self.show_help,
+            "friends": self.show_friends,
+            "add": self.add_friend,
+            "remove": self.remove_friend,
+        }
+        """Mapping for slash commands"""
+        self.system_user = Friend(
             username="System",
             id="system",
             color="orange_underline",
@@ -72,17 +93,67 @@ class UserInterface:
 
         self.last_closed_tile: List[Tile] = []
 
+    def add_friend(self, username: str, key: str, color: str = "") -> None:
+        """Add given key to friendslist."""
+        if not color:
+            colors = [
+                "red",
+                "blue",
+                "orange",
+                "pink",
+                "green",
+                "purple",
+                "brown",
+                "yellow",
+                "white",
+            ]
+            color = choice(colors)
+
+        new_user = self.db_manager.add_friend(
+            username=username, id=key, color=color, date_added=datetime.now()
+        )
+        assert new_user
+        # TODO: add to database
+
+    def remove_friend(self, key: str) -> None:
+        """Remove given key from friendslist."""
+        # TODO: remove from db
+        pass
+
+    def get_friends(self) -> List:
+        """Get list of friends from DB."""
+        friends = self.db_manager.get_all_friends()
+
+        return friends
+
     def on_new_message_received(
-        self, message: Union[MessageModel, str], user: Union[UserModel, str]
+        self, message: Union[Message, str], user: Union[Friend, str]
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
         self.view.add_message(user, message)
 
+    def show_friends(self) -> None:
+        """Show friends (TODO: some real implementation)."""
+        friends = self.get_friends()
+        self.on_system_message_received(message="Friends:")
+        for friend in friends:
+            self.on_system_message_received(
+                message=self.term.green(friend.username) + " - " + friend.id
+            )
+
+    def show_help(self) -> None:
+        """Show help for slash commands."""
+        self.on_system_message_received(message="Commands:")
+        for command in self.slash_cmds.keys():
+            self.on_system_message_received(
+                message=self.term.pink_underline("/" + command)
+            )
+
     def on_system_message_received(
-        self, message: str, relevant_user: Union[UserModel, str, None] = None
+        self, message: str, relevant_user: Union[Friend, str, None] = None
     ) -> None:
         """Handle new system message and add it to proper chat tiles."""
-        message_model = MessageModel(
+        message_model = Message(
             date=datetime.now(),
             body=message,
             from_user=self.system_user,
@@ -111,24 +182,54 @@ class UserInterface:
         # run forever
         while True:
             # get input from the input queue
-            inp_tuple = await (self.view.input_queue().get())
+            input_message = await (self.view.input_queue().get())
 
             # first part of input is input mode
-            mode = inp_tuple[0]
+            mode = input_message.mode
             # second part in input itself
-            inp = inp_tuple[1]
+            input_text = input_message.text
 
             cmd = None
 
             # handle graceful exit
-            if mode == "exit":
+            if mode == InputMode.EXIT:
                 print(self.term.exit_fullscreen)
                 os._exit(0)
 
+            # command mode
+            elif mode == InputMode.COMMAND:
+                try:
+                    if input_text[0] in self.slash_cmds:
+                        cmd = self.slash_cmds[input_text[0]]
+                        if cmd == self.view.layout.remove:
+                            target = self.view.layout.current_tile
+                            try:
+                                if target:
+                                    self.last_closed_tile.append(target)
+                                    cmd(target)
+                            except IndexError:
+                                continue
+                        else:
+                            cmd(*input_text[1])
+
+                        await self.view.layout.render_all()
+                    else:
+                        self.on_system_message_received(
+                            message=self.term.red(
+                                f"Unknown command: /{input_text[0]}"
+                            )
+                        )
+                except Exception as ex:
+                    self.on_system_message_received(
+                        message=self.term.red(
+                            "Error parsing slash command: " + ex.args[0]
+                        )
+                    )
+
             # layout mode, we're working inside the UI so
             # the user input isn't sent anywhere
-            if mode == "layout" and inp in self.cmds_layout:
-                cmd = self.cmds_layout[inp]
+            elif mode == InputMode.LAYOUT and input_text in self.cmds_layout:
+                cmd = self.cmds_layout[input_text]
                 if cmd:
                     # handle tile removal
                     if cmd == self.view.layout.remove:
@@ -155,27 +256,42 @@ class UserInterface:
                         await self.view.layout.render_all()
             # 'normal' input mode, we gather the input and then
             # issue a callback based on focused file type
-            elif mode == "":
+            elif mode == InputMode.NORMAL:
                 tile = self.view.layout.current_tile
-                tile_type = type(tile)
 
-                if tile and tile_type == ChatTile:
-                    new_message = MessageModel(
-                        from_user=self.myself,
-                        to_user=tile.chat_with,  # type: ignore
-                        body=inp,
-                        date=datetime.now(),
-                    )  # type: ignore
-                    self.view.add_message(
-                        tile.chat_with, new_message  # type: ignore
-                    )  # type: ignore
-                    # pass the message to the client core
-                    await self.upstream_callback(new_message)
+                if tile and isinstance(tile, ChatTile):
+                    # handle buffer scroll
+                    if input_text == self.term.KEY_UP:
+                        tile.increment_offset()
+                        await tile.render(self.term)
+                    elif input_text == self.term.KEY_DOWN:
+                        tile.decrement_offset()
+                        await tile.render(self.term)
+                    else:
+                        new_message = Message(
+                            from_user=self.myself,
+                            to_user=tile.chat_with,  # type: ignore
+                            body=input_text,
+                            date=datetime.now(),
+                        )  # type: ignore
+                        tile.reset_offset()
+                        self.view.add_message(
+                            tile.chat_with, new_message  # type: ignore
+                        )  # type: ignore
+                        self.db_manager.save_message(
+                            body=input_text,
+                            date=datetime.now(),
+                            state=CansMessageState.DELIVERED,
+                            from_user=self.myself.id,
+                            to_user=tile.chat_with.id,
+                        )
+                        # pass the message to the client core
+                        await self.upstream_callback(new_message)
 
-                elif tile and tile_type == Tile:
-                    tile.consume_input(inp, self.term)
+                elif (
+                    tile
+                    and isinstance(tile, Tile)
+                    and isinstance(input_text, str)
+                ):
+                    tile.consume_input(input_text, self.term)
                     pass
-
-    def say_hello(self) -> None:
-        """Says f*cking hello."""
-        print("hello 2")
