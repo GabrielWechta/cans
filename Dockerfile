@@ -46,8 +46,7 @@ RUN apt-get update && apt-get install -y \
         sqlcipher \
         libsqlcipher-dev \
         libsqlcipher0 \
-        libssl-dev \
-        gcc
+        libssl-dev
 
 
 WORKDIR /usr/src/app
