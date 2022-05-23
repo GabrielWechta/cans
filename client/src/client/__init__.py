@@ -70,12 +70,12 @@ class Client:
         self.echo_peer_id = (
             "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
         )
-        echo_client = self.db_manager.add_friend(
-            username="Echo",
-            id=self.echo_peer_id,
-            color="red",
-            date_added=datetime.now(),
-        )
+        # echo_client = self.db_manager.add_friend(
+        #    username="Echo",
+        #    id=self.echo_peer_id,
+        #    color="red",
+        #   date_added=datetime.now(),
+        # )
 
         eve_client = self.db_manager.add_friend(
             username="Eve",
@@ -84,7 +84,7 @@ class Client:
             date_added=datetime.now(),
         )
 
-        assert echo_client
+        # assert echo_client
         assert eve_client
 
         self.ui = UserInterface(

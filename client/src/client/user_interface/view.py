@@ -49,7 +49,7 @@ class View:
         header = HeaderTile(
             name="Title bar",
             title=term.red_underline("cans") + " secure messenger",
-            right_title=term.green_underline("α") + "-version",
+            right_title=term.purple_underline("β") + "-version",
             width=term.width,
             height=2,
             x=0,

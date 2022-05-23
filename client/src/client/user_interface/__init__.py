@@ -85,11 +85,14 @@ class UserInterface:
             "remove": self.remove_friend,
         }
         """Mapping for slash commands"""
-        self.system_user = Friend(
+
+        self.system_user = self.db_manager.add_friend(
             username="System",
             id="system",
             color="orange_underline",
+            date_added=datetime.now(),
         )
+        """System user for system commands"""
 
         self.last_closed_tile: List[Tile] = []
 
@@ -108,12 +111,17 @@ class UserInterface:
                 "white",
             ]
             color = choice(colors)
-
+        # TODO: some better sanitizing
+        assert getattr(self.term, color), "Color unknown"
+        # TODO: make it so it has a different message when
+        # adding an already used key
         new_user = self.db_manager.add_friend(
             username=username, id=key, color=color, date_added=datetime.now()
         )
-        assert new_user
-        # TODO: add to database
+        assert new_user, "Something went wrong with adding new user"
+        self.on_system_message_received(
+            message=f"New friend {getattr(self.term, color)(username)} added!"
+        )
 
     def remove_friend(self, key: str) -> None:
         """Remove given key from friendslist."""
@@ -135,15 +143,21 @@ class UserInterface:
     def show_friends(self) -> None:
         """Show friends (TODO: some real implementation)."""
         friends = self.get_friends()
-        self.on_system_message_received(message="Friends:")
+        self.on_system_message_received(
+            message=f"-----{self.term.bold_underline('Friends:')}-----"
+        )
         for friend in friends:
             self.on_system_message_received(
-                message=self.term.green(friend.username) + " - " + friend.id
+                message=getattr(self.term, friend.color)(friend.username)
+                + " - "
+                + friend.id
             )
 
     def show_help(self) -> None:
         """Show help for slash commands."""
-        self.on_system_message_received(message="Commands:")
+        self.on_system_message_received(
+            message=f"-----{self.term.bold_underline('Commands:')}-----"
+        )
         for command in self.slash_cmds.keys():
             self.on_system_message_received(
                 message=self.term.pink_underline("/" + command)
@@ -159,12 +173,30 @@ class UserInterface:
             from_user=self.system_user,
             to_user=self.myself,
         )
+
         if not relevant_user:
+            assert self.system_user
+            self.db_manager.save_message(
+                body=message,
+                date=datetime.now(),
+                state=CansMessageState.DELIVERED,
+                from_user=self.system_user.id,
+                to_user=self.myself,
+            )
+
+            # TODO: what the heck is thaaaaaaat
+            assert self.system_user
+            if len(self.view.find_chats(self.system_user)) > 0:
+                self.view.add_message(self.system_user, message=message)
+
             tile = self.view.layout.current_tile
             if isinstance(tile, ChatTile):
-                self.view.add_message(tile.chat_with, message_model)
-            else:
-                pass
+                if tile.chat_with != self.system_user:
+                    self.view.add_message(tile.chat_with, message_model)
+            elif len(self.view.find_chats(self.system_user)) == 0:
+                self.view.add_chat(self.system_user)
+                self.loop.create_task(self.view.render_all())
+
         else:
             self.on_new_message_received(message_model, relevant_user)
 
@@ -267,17 +299,19 @@ class UserInterface:
                     elif input_text == self.term.KEY_DOWN:
                         tile.decrement_offset()
                         await tile.render(self.term)
-                    else:
+                    elif tile.chat_with != self.system_user:
                         new_message = Message(
                             from_user=self.myself,
                             to_user=tile.chat_with,  # type: ignore
                             body=input_text,
                             date=datetime.now(),
+                            state=CansMessageState.DELIVERED,
                         )  # type: ignore
                         tile.reset_offset()
                         self.view.add_message(
                             tile.chat_with, new_message  # type: ignore
                         )  # type: ignore
+                        # TODO: do it on client level
                         self.db_manager.save_message(
                             body=input_text,
                             date=datetime.now(),
