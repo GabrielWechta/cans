@@ -20,7 +20,7 @@ class DatabaseManager:
     def __init__(self, name: str, password: str) -> None:
         """Construct the clientside database manager."""
         self.log = logging.getLogger("cans-logger")
-        self._db_name = name
+        self._db_name = str(name)
         self._db_pass = password
 
     def initialize(self) -> None:

@@ -52,7 +52,9 @@ class SessionManager:
             self.sessions, self.__get_one_time_key
         )
         self.upstream_handler = SessionUpstreamHandler(
-            self.sessions, self.__route_message
+            sessions=self.sessions,
+            route_message_callback=self.__route_message,
+            database_manager=self.database_manager,
         )
 
     async def authed_user_entry(

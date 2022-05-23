@@ -5,6 +5,7 @@ from typing import Callable, Dict
 
 from common.messages import CansMessage, CansMsgId, cans_recv
 from server.client_session import ClientSession
+from server.database_manager_server import DatabaseManager
 from server.session_event import LoginEvent, SessionEvent
 
 
@@ -19,6 +20,7 @@ class SessionUpstreamHandler:
         self,
         sessions: Dict[str, ClientSession],
         route_message_callback: Callable,
+        database_manager: DatabaseManager,
     ) -> None:
         """Construct the upstream handler."""
         self.log = logging.getLogger("cans-logger")
@@ -26,6 +28,8 @@ class SessionUpstreamHandler:
         self.sessions = sessions
         # Store a callback for routing messages between handlers
         self.route_message = route_message_callback
+        # Store a reference to the database manager
+        self.database_manager = database_manager
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self.__handle_message_user_message,
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
@@ -94,6 +98,7 @@ class SessionUpstreamHandler:
         """Handle message type ADD_FRIEND."""
         peer = message.payload["friend"]
         self.log.debug(f"User {session.user_id} added friend {peer}")
+        await self.database_manager.add_subscriber_of(peer, session.user_id)
         # Check if the new friend is online
         if peer in self.sessions.keys():
             # Peer online, send login event
