@@ -33,7 +33,7 @@ class SessionDownstreamHandler:
         self.log = logging.getLogger("cans-logger")
         # Store a reference to the managed sessions
         self.sessions = sessions
-        # Store a reference to the parent session manager
+        # Store a reference to the get key callback
         self.get_one_time_key = get_one_time_key_callback
         # Set up event handlers
         self.event_handlers = {

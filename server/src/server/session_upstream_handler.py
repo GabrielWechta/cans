@@ -1,10 +1,12 @@
 """Upstream traffic handler."""
 
 import logging
-from typing import Callable
+from typing import Callable, Dict
 
 from common.messages import CansMessage, CansMsgId, cans_recv
 from server.client_session import ClientSession
+from server.database_manager_server import DatabaseManager
+from server.session_event import LoginEvent, SessionEvent
 
 
 class SessionUpstreamHandler:
@@ -14,15 +16,25 @@ class SessionUpstreamHandler:
     from the client to the server.
     """
 
-    def __init__(self, route_message_callback: Callable) -> None:
+    def __init__(
+        self,
+        sessions: Dict[str, ClientSession],
+        route_message_callback: Callable,
+        database_manager: DatabaseManager,
+    ) -> None:
         """Construct the upstream handler."""
         self.log = logging.getLogger("cans-logger")
+        # Store a reference to the managed sessions
+        self.sessions = sessions
         # Store a callback for routing messages between handlers
         self.route_message = route_message_callback
+        # Store a reference to the database manager
+        self.database_manager = database_manager
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self.__handle_message_user_message,
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
             CansMsgId.PEER_HELLO: self.__handle_message_peer_hello,
+            CansMsgId.ADD_FRIEND: self.__handle_message_add_friend,
             # fmt: off
             CansMsgId.SESSION_ESTABLISHED:
                 self.__handle_message_session_established,
@@ -80,6 +92,19 @@ class SessionUpstreamHandler:
         # User traffic - just route it
         await self.route_message(message)
 
+    async def __handle_message_add_friend(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type ADD_FRIEND."""
+        peer = message.payload["friend"]
+        self.log.debug(f"User {session.user_id} added friend {peer}")
+        await self.database_manager.add_subscriber_of(peer, session.user_id)
+        # Check if the new friend is online
+        if peer in self.sessions.keys():
+            # Peer online, send login event
+            event = LoginEvent(peer)
+            await self.__send_event(event, session)
+
     async def __handle_message_session_established(
         self, message: CansMessage, session: ClientSession
     ) -> None:
@@ -105,3 +130,13 @@ class SessionUpstreamHandler:
     ) -> bool:
         """Validate an inbound message with regards to the current session."""
         return message.header.sender == session.user_id
+
+    async def __send_event(
+        self, event: SessionEvent, session: ClientSession
+    ) -> None:
+        """Send an event.
+
+        The event shall be handled in the relevant session's
+        downstream handler.
+        """
+        await session.event_queue.put(event)

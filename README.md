@@ -84,7 +84,7 @@ pytest common
 ### Run integration tests
 
 ```bash
-./run_tests
+./run_integration_tests
 ```
 
 <!-- ABOUT THE PROJECT -->
