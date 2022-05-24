@@ -46,7 +46,7 @@ ksLiCIUdTgUnbpVQm7sZQnc54QPzNZGPbxZe7BPhzlNhnuQyHDZ/0Ij6QA==
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
                     friends=[
-                        "b6b53aad58b709c3dd0fed42c66f9a9a487eed3091b0ce480d3280d0b0dde6a4"  # noqa: E501
+                        # loneliness
                     ],
                 ),
                 self._echo_service(),
