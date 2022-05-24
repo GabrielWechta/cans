@@ -20,7 +20,7 @@ def make_table_name(model_class: Type[peewee.Model]) -> str:
 
 def default_message_id() -> str:
     """Create a default id for a message."""
-    return hashlib.sha224(
+    return hashlib.sha256(
         (
             datetime.now().strftime("%m/%d/%Y, %H:%M:%S:%f") + str(random())
         ).encode("UTF-8")

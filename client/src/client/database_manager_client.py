@@ -17,25 +17,17 @@ from .models import CansMessageState, Friend, Message, Setting, db_proxy
 class DatabaseManager:
     """Clientside database manager."""
 
-    def __init__(
-        self, name: str, password: str, username: str, color: str
-    ) -> None:
+    def __init__(self, name: str, password: str) -> None:
         """Construct the clientside database manager."""
         self.log = logging.getLogger("cans-logger")
         self._db_name = str(name)
         self._db_pass = password
-        self.myself = Friend(id="myself", username=username, color=color)
-        self.system = Friend(
-            id="system", username="System", color="orange_underline"
-        )
 
     def initialize(self) -> None:
         """Set up the connection with application's database."""
         self.db = SqlCipherDatabase(self._db_name, self._db_pass)
         db_proxy.initialize(self.db)
         self.db.create_tables([Friend, Message, Setting])
-        self.add_friend(self.myself)
-        self.add_friend(self.system)
 
     def add_friend(
         self,
@@ -88,8 +80,7 @@ class DatabaseManager:
         try:
             return list(
                 Friend.select().where(
-                    (Friend.id != self.myself.id)
-                    | (Friend.id != self.system.id)
+                    (Friend.id != "myself") & (Friend.id != "system")
                 )
             )
         except peewee.DoesNotExist:

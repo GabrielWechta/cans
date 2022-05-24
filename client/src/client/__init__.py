@@ -11,7 +11,7 @@ from blessed import Terminal
 from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
-from .models import CansMessageState, Message
+from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
 from .startup import Startup
 from .user_interface import UserInterface
@@ -54,13 +54,19 @@ class Client:
         self.db_manager = DatabaseManager(
             name=str(self.startup.db_path),
             password=self.password,
-            username="Alice",
-            color="blue",
         )
         self.db_manager.initialize()
 
+        # Initialize system and myself in the database
+        self.system = self.db_manager.add_friend(
+            Friend(id="system", username="System", color="orange_underline")
+        )
+        self.myself = self.db_manager.add_friend(
+            Friend(id="myself", username="Alice", color="blue")
+        )
+
         # Set identity
-        assert self.db_manager.myself
+        assert self.myself
 
         self.echo_peer_id = (
             "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
@@ -85,7 +91,7 @@ class Client:
         self.ui = UserInterface(
             loop=self.event_loop,
             upstream_callback=self._handle_upstream_message,
-            identity=self.db_manager.myself,
+            identity=self.myself,
             db_manager=self.db_manager,
         )
 
@@ -119,14 +125,14 @@ class Client:
             self.log.debug(f"Received message from {message.header.sender}")
 
             # TODO: Add support for message from unknown user
-            assert self.db_manager.myself
+            assert self.myself
             self.db_manager.save_message(
                 id=message.payload["cookie"],
                 body=message.payload["text"],
                 date=datetime.now(),
                 state=CansMessageState.DELIVERED,
                 from_user=message.header.sender,
-                to_user=self.db_manager.myself.id,
+                to_user=self.myself.id,
             )
 
             # Forward to UI

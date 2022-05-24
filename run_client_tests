@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-echo "Running client tests..."
-
-pytest client/tests
-
-rm test.db
-
-echo "All done!"

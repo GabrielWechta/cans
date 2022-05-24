@@ -1,7 +1,6 @@
 """Database operations tests."""
 
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -9,17 +8,16 @@ from client.database_manager_client import DatabaseManager
 from client.models import CansMessageState, Friend, Message
 
 
-@pytest.fixture()
-def database():
+@pytest.fixture(scope="session")
+def database(tmpdir_factory):
     """Define test.db for test purposes.
 
     Usable one time so delete it before running tests.
     """
+    db_file = tmpdir_factory.mktemp("db_test").join("test.db")
     db = DatabaseManager(
-        name=Path("test.db"),
+        name=db_file,
         password="SafeAndSecurePassword2137",
-        username="Bob:D",
-        color="red",
     )
     return db
 
