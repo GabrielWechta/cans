@@ -8,7 +8,7 @@ from typing import Any, List, Tuple
 
 from blessed import Terminal, keyboard
 
-from ..models import Friend, Message
+from ..models import CansMessageState, Friend, Message
 from .input import InputMess, InputMode
 
 
@@ -648,7 +648,11 @@ class ChatTile(Tile):
             message += (
                 t.gray("[")
                 + user_color(mes.from_user.username)
-                + t.gray("]> ")
+                + (
+                    t.gray("]> ")
+                    if mes.state == CansMessageState.DELIVERED
+                    else t.gray("]? ")
+                )
                 + str(mes.body)
             )
 
