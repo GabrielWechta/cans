@@ -8,11 +8,10 @@ from datetime import datetime
 
 from blessed import Terminal
 
-from common.keys import digest_key
 from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
-from .models import CansMessageState, Message
+from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
 from .startup import Startup
 from .user_interface import UserInterface
@@ -53,18 +52,20 @@ class Client:
 
         self.event_loop = asyncio.get_event_loop()
         self.db_manager = DatabaseManager(
-            str(self.startup.db_path), self.password
+            name=str(self.startup.db_path),
+            password=self.password,
         )
         self.db_manager.initialize()
 
-        # Set identity
+        # Initialize system and myself in the database
+        self.system = self.db_manager.add_friend(
+            Friend(id="system", username="System", color="orange_underline")
+        )
         self.myself = self.db_manager.add_friend(
-            username="Alice",
-            id=digest_key(self.pub_key),
-            color="blue",
-            date_added=datetime.now(),
+            Friend(id="myself", username="Alice", color="blue")
         )
 
+        # Set identity
         assert self.myself
 
         self.echo_peer_id = (
@@ -126,6 +127,7 @@ class Client:
             # TODO: Add support for message from unknown user
             assert self.myself
             self.db_manager.save_message(
+                id=message.payload["cookie"],
                 body=message.payload["text"],
                 date=datetime.now(),
                 state=CansMessageState.DELIVERED,
