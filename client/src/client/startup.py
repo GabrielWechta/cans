@@ -7,6 +7,8 @@ from os import mkdir, path
 from pathlib import Path
 from shutil import rmtree
 
+from Cryptodome.Cipher import AES, _mode_cbc
+from Cryptodome.Util.Padding import pad, unpad
 from olm import Account
 
 from common.keys import EcPemKeyPair
@@ -99,9 +101,6 @@ class Startup:
 
         Save generated values to the .cans/keys directory.
         """
-        # TODO: Add private key encryption
-        password = password
-
         subprocess.run(
             "openssl ecparam -name prime256v1 -genkey -noout -out "
             + self.user_private_key_path.as_posix(),
@@ -116,6 +115,19 @@ class Startup:
             shell=True,
         )
 
+        # Encrypt private key with AES-CBC using password
+        with open(self.user_private_key_path, "r") as private_key_file:
+            priv_key = private_key_file.read().encode("utf-8")
+            cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_CBC)
+            enc_priv_key = cipher.encrypt(pad(priv_key, AES.block_size))
+
+        # Overwrite private key with encrypted version
+        with open(self.user_private_key_path, "wb") as priv_key_file:
+            # Save iv at the beginning of the file
+            if isinstance(cipher, _mode_cbc.CbcMode):
+                priv_key_file.write(cipher.iv)
+            priv_key_file.write(enc_priv_key)
+
     def decrypt_key_pair(self, password: str) -> EcPemKeyPair:
         """Decrypt key files and return them."""
         pub_key = ""
@@ -125,10 +137,14 @@ class Startup:
             pub_key = public_key_file.read()
 
         # Read private key from file
-        with open(self.user_private_key_path, "r") as private_key_file:
-            priv_key = private_key_file.read()
+        with open(self.user_private_key_path, "rb") as private_key_file:
+            iv = private_key_file.read(16)
+            enc_priv_key = private_key_file.read()
 
-        # TODO: Decrypt keys
-        password = password
+        # Decrypt keys
+        cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_CBC, iv=iv)
+        priv_key = unpad(cipher.decrypt(enc_priv_key), AES.block_size).decode(
+            "utf8"
+        )
 
         return priv_key, pub_key
