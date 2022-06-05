@@ -44,17 +44,13 @@ class MockClient(Client):
     async def run(self) -> None:
         """Run dummy client application in the background."""
         # Connect to the server
-        await asyncio.gather(  # noqa: FKA01
-            self.session_manager.connect(
-                url=f"wss://{self.server_hostname}:{self.server_port}",
-                certpath=self.certpath,
-                friends=[self.test_peer],
-            ),
-            self._send_message_to_peer(),
-            self._receive_message_from_peer(),
+        await self.session_manager.connect(
+            url=f"wss://{self.server_hostname}:{self.server_port}",
+            certpath=self.certpath,
+            friends={self.test_peer},
         )
 
-    async def _send_message_to_peer(self) -> None:
+    async def send_message_to_peer(self) -> None:
         """Send a test message to a peer."""
         # Give the other party time for login
         await asyncio.sleep(1)
@@ -65,7 +61,7 @@ class MockClient(Client):
         self.log.debug(f"Sending message to {self.test_peer}...")
         await self.session_manager.send_message(message)
 
-    async def _receive_message_from_peer(self) -> None:
+    async def receive_message_from_peer(self) -> None:
         """Receive a test message from a peer."""
         timeout = 5
         try:
@@ -109,5 +105,10 @@ def test_multiple_clients():
 
     with pytest.raises(MultipleClientsOkException):
         asyncio.get_event_loop().run_until_complete(
-            asyncio.gather(alice.run(), bob.run())
+            asyncio.gather(  # noqa: FKA01
+                alice.run(),
+                bob.run(),
+                alice.send_message_to_peer(),
+                bob.receive_message_from_peer(),
+            )
         )

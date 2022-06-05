@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import ssl
-from typing import List, Tuple
+from typing import Set, Tuple
 
 import websockets.client as ws
 from olm import Account, OlmMessage
@@ -22,6 +22,7 @@ from common.messages import (
     CansMsgId,
     PeerHello,
     ReplenishOneTimeKeysResp,
+    RequestLogoutNotif,
     SchnorrChallenge,
     SchnorrCommit,
     SchnorrResponse,
@@ -78,7 +79,7 @@ class SessionManager:
         self.downstream_system_message_queue: asyncio.Queue = asyncio.Queue()
 
     async def connect(
-        self, url: str, certpath: str, friends: List[str]
+        self, url: str, certpath: str, friends: Set[str]
     ) -> None:
         """Connect to the server."""
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -129,7 +130,7 @@ class SessionManager:
         return message, message.payload["cookie"]
 
     async def _run_server_handshake(
-        self, conn: ws.WebSocketClientProtocol, friends: List[str]
+        self, conn: ws.WebSocketClientProtocol, friends: Set[str]
     ) -> None:
         """Shake hands with the server."""
         # Send Schnorr commitment
@@ -179,44 +180,50 @@ class SessionManager:
         """Handle upstream traffic, i.e. client to server."""
         while True:
             message = await self.upstream_message_queue.get()
-            # Fill in missing sender
-            message.header.sender = self.identity
-            receiver = message.header.receiver
+            await self._handle_outgoing_message(conn, message)
 
-            if receiver is None:
-                # Receiver is None - the message should be terminated by
-                # the server and so no crypto session is used
-                await cans_send(message, conn)
-            elif self.session_sm.potential_session_with(receiver):
-                # Session not yet established, buffer the user message
-                # and initiate the key exchange
-                self.log.debug(
-                    f"Sending first message to peer {receiver}. Buffering the"
-                    + " user message and sending PEER_HELLO first..."
-                )
-                self.session_sm.make_session_pending(receiver, message)
-                # Send a hello message first
-                message = PeerHello(receiver)
-                message.header.sender = self.identity
-                message = self._encrypt_message_payload(message)
-                await cans_send(message, conn)
-                # The buffered user message will be sent as soon as session
-                # is established
-            elif self.session_sm.pending_session_with(receiver):
-                self.log.warning(
-                    f"Buffering new message to peer {receiver}. Session still"
-                    + " not established"
-                )
-                # Still waiting for ACK, buffer the message
-                self.session_sm.pend_message(receiver, message)
-            elif self.session_sm.active_session_with(receiver):
-                # Well-established session, encrypt the payload
-                message = self._encrypt_message_payload(message)
-                await cans_send(message, conn)
-            else:
-                self.log.warning(
-                    f"No active session with peer {message.header.receiver}"
-                )
+    async def _handle_outgoing_message(
+        self, conn: ws.WebSocketClientProtocol, message: CansMessage
+    ) -> None:
+        """Handle an outgoing message."""
+        # Fill in missing sender
+        message.header.sender = self.identity
+        receiver = message.header.receiver
+
+        if receiver is None:
+            # Receiver is None - the message should be terminated by
+            # the server and so no crypto session is used
+            await cans_send(message, conn)
+        elif self.session_sm.potential_session_with(receiver):
+            # Session not yet established, buffer the user message
+            # and initiate the key exchange
+            self.log.debug(
+                f"Sending first message to peer {receiver}. Buffering the"
+                + " user message and sending PEER_HELLO first..."
+            )
+            self.session_sm.make_session_pending(receiver, message)
+            # Send a hello message first
+            message = PeerHello(receiver)
+            message.header.sender = self.identity
+            message = self._encrypt_message_payload(message)
+            await cans_send(message, conn)
+            # The buffered user message will be sent as soon as session
+            # is established
+        elif self.session_sm.pending_session_with(receiver):
+            self.log.warning(
+                f"Buffering new message to peer {receiver}. Session still"
+                + " not established"
+            )
+            # Still waiting for ACK, buffer the message
+            self.session_sm.pend_message(receiver, message)
+        elif self.session_sm.active_session_with(receiver):
+            # Well-established session, encrypt the payload
+            message = self._encrypt_message_payload(message)
+            await cans_send(message, conn)
+        else:
+            self.log.warning(
+                f"No active session with peer {message.header.receiver}"
+            )
 
     async def _handle_downstream(
         self, conn: ws.WebSocketClientProtocol
@@ -224,15 +231,20 @@ class SessionManager:
         """Handle downstream traffic, i.e. server to client."""
         while True:
             message = await cans_recv(conn)
+            await self._handle_incoming_message(conn, message)
 
-            if message.header.msg_id in self.message_handlers.keys():
-                # Call a registered handler
-                await self.message_handlers[message.header.msg_id](message)
-            else:
-                self.log.warning(
-                    "Received unexpected message with ID:"
-                    + f"{message.header.msg_id}"
-                )
+    async def _handle_incoming_message(
+        self, conn: ws.WebSocketClientProtocol, message: CansMessage
+    ) -> None:
+        """Handle an incoming message."""
+        if message.header.msg_id in self.message_handlers.keys():
+            # Call a registered handler
+            await self.message_handlers[message.header.msg_id](message)
+        else:
+            self.log.warning(
+                "Received unexpected message with ID:"
+                + f"{message.header.msg_id}"
+            )
 
     async def _resolve_race_condition(
         self, hello_message: CansMessage
@@ -299,6 +311,9 @@ class SessionManager:
             self.session_sm.activate_inbound_session(message)
             # Send ACK to the other party
             await self.__acknowledge_peer_session(peer)
+            # Request notification from the server on the peer's logout
+            notif_request = RequestLogoutNotif(peer)
+            await self.send_message(notif_request)
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
@@ -310,8 +325,7 @@ class SessionManager:
             one_time_key=one_time_key,
         )
 
-        # TODO-UI implement behaviour of user login
-        self.log.info(f"Peer {peer} just logged in!")
+        self.log.info(f"{peer} just logged in!")
         await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
@@ -319,8 +333,7 @@ class SessionManager:
         peer = message.payload["peer"]
         self.session_sm.terminate_session(peer)
 
-        # TODO-UI implement behaviour of user logout
-        self.log.info(f"Peer {peer} just logged out!")
+        self.log.info(f"{peer} just logged out!")
         await self.downstream_system_message_queue.put(message)
 
     async def __handle_message_ack_message_delivered(

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from typing import List
+from typing import Set
 
 import pytest
 from Cryptodome.PublicKey import ECC
@@ -38,7 +38,7 @@ class MockSessionManager(SessionManager):
 class MockClient(Client):
     """Mock client."""
 
-    def __init__(self, my_keys: EcPemKeyPair, friends: List[str]) -> None:
+    def __init__(self, my_keys: EcPemKeyPair, friends: Set[str]) -> None:
         """Construct mock client."""
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
@@ -80,7 +80,7 @@ async def impl_test_key_replenishment():
     alice_secret, alice_public = __generate_keys()
     alice = MockClient(
         my_keys=(alice_secret, alice_public),
-        friends=[],
+        friends=set(),
     )
 
     # Start running the Alice client in the background
@@ -91,7 +91,7 @@ async def impl_test_key_replenishment():
         # deplete Alice's one-time keys
         peer = MockClient(
             my_keys=__generate_keys(),
-            friends=[digest_key(alice_public)],
+            friends={digest_key(alice_public)},
         )
         asyncio.create_task(peer.run())
     timeout = 5

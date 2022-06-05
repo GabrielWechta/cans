@@ -22,7 +22,6 @@ class Client:
 
     def __init__(self) -> None:
         """Construct the client object."""
-        # TODO: Parse environment variables
         self.server_hostname = os.environ["CANS_SERVER_HOSTNAME"]
         self.server_port = os.environ["CANS_PORT"]
         self.certpath = os.environ["CANS_SELF_SIGNED_CERT_PATH"]
@@ -110,7 +109,7 @@ class Client:
                 self.session_manager.connect(
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
-                    friends=[self.echo_peer_id],
+                    friends={self.echo_peer_id},
                 ),
                 self._handle_downstream_user_traffic(),
                 self._handle_downstream_system_traffic(),
@@ -145,13 +144,13 @@ class Client:
         while True:
             message = await self.session_manager.receive_system_message()
             if message.header.msg_id == CansMsgId.PEER_LOGIN:
-                # TODO: make it more general
+                # TODO: Make it more general
                 payload = Terminal().green_underline("User just logged in!")
                 self.ui.on_system_message_received(
                     payload, message.payload["peer"]
                 )
             elif message.header.msg_id == CansMsgId.PEER_LOGOUT:
-                # TODO: make it more general
+                # TODO: Make it more general
                 payload = Terminal().red_underline("User just logged out!")
                 self.ui.on_system_message_received(
                     payload, message.payload["peer"]

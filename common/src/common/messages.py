@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import IntEnum, auto, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
 from random import random
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Set, Union
 
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
@@ -40,6 +40,7 @@ class CansMsgId(IntEnum):
     PEER_LOGOUT = auto()
     ADD_FRIEND = auto()
     REMOVE_FRIEND = auto()
+    REQUEST_LOGOUT_NOTIF = auto()
     ADD_BLACKLIST = auto()
     REMOVE_BLACKLIST = auto()
     REPLENISH_ONE_TIME_KEYS_REQ = auto()
@@ -138,7 +139,7 @@ class SchnorrResponse(CansMessage):
     def __init__(
         self,
         response: int,
-        subscriptions: List[str],
+        subscriptions: Set[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:
@@ -148,7 +149,7 @@ class SchnorrResponse(CansMessage):
         self.header.receiver = ""
         self.payload = {
             "response": response,
-            "subscriptions": subscriptions,
+            "subscriptions": list(subscriptions),
             "identity_key": identity_key,
             "one_time_keys": one_time_keys,
         }
@@ -203,26 +204,37 @@ class RemoveFriend(CansMessage):
         self.payload = {"friend": friend}
 
 
+class RequestLogoutNotif(CansMessage):
+    """Request one-time notification on logout."""
+
+    def __init__(self, peer: str) -> None:
+        """Create a logout notification request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REQUEST_LOGOUT_NOTIF
+        self.header.receiver = None
+        self.payload = {"peer": peer}
+
+
 class AddBlacklist(CansMessage):
     """Blacklist users request."""
 
-    def __init__(self, blacklist: List[str]) -> None:
+    def __init__(self, blacklist: Set[str]) -> None:
         """Create a blacklist request."""
         super().__init__()
         self.header.msg_id = CansMsgId.ADD_BLACKLIST
         self.header.receiver = None
-        self.payload = {"users": blacklist}
+        self.payload = {"users": list(blacklist)}
 
 
 class RemoveBlacklist(CansMessage):
     """Whitelist users request."""
 
-    def __init__(self, whitelist: List[str]) -> None:
+    def __init__(self, whitelist: Set[str]) -> None:
         """Create a whitelist request."""
         super().__init__()
         self.header.msg_id = CansMsgId.REMOVE_BLACKLIST
         self.header.receiver = None
-        self.payload = {"users": whitelist}
+        self.payload = {"users": list(whitelist)}
 
 
 class ActiveFriends(CansMessage):

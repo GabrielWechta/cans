@@ -1,7 +1,7 @@
 """Class representing a client session with the server."""
 
 import asyncio
-from typing import Dict, List
+from typing import Dict, Set
 
 import websockets.server as ws
 
@@ -13,7 +13,7 @@ class ClientSession:
         self,
         conn: ws.WebSocketServerProtocol,
         user_id: str,
-        subscriptions: List[str],
+        subscriptions: Set[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:
@@ -26,6 +26,7 @@ class ClientSession:
         self.one_time_keys = one_time_keys
         self.hostname = conn.remote_address[0]
         self.port = conn.remote_address[1]
+        self.one_time_subscribers: Set[str] = set()
 
     def pop_one_time_key(self) -> str:
         """Pop double-ratchet one-time key."""
