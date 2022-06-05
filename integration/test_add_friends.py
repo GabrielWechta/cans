@@ -47,7 +47,7 @@ class MockClient(Client):
             self.session_manager.connect(
                 url=f"wss://{self.server_hostname}:{self.server_port}",
                 certpath=self.certpath,
-                friends=[],
+                friends=set(),
             ),
         )
 

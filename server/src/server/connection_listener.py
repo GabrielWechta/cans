@@ -7,7 +7,7 @@ them to connection handlers/callbacks.
 import asyncio
 import logging
 import ssl
-from typing import Dict, List, Tuple
+from typing import Dict, Set, Tuple
 
 import websockets.server as ws
 
@@ -109,12 +109,17 @@ class ConnectionListener:
             )
             # Terminate the connection with application error code
             await conn.close(code=3000, reason="Authentication failed")
-        except Exception:
-            self.log.error("Unexpected error occurred!", exc_info=True)
+        except Exception as e:
+            self.log.error(
+                f"User {conn.remote_address[0]}:{conn.remote_address[1]}"
+                + f" triggered an exception ({type(e).__name__}): {str(e)}"
+            )
+            # Terminate the connection with application error code
+            await conn.close(code=3001, reason="Serverside exception")
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol
-    ) -> Tuple[str, List[str], str, Dict[str, str]]:
+    ) -> Tuple[str, Set[str], str, Dict[str, str]]:
         """Run authentication protocol with the user."""
         # Await commitment message
         commit_message: SchnorrCommit = await cans_recv(conn)
@@ -138,7 +143,7 @@ class ConnectionListener:
         ):
             return (
                 public_key,
-                response_message.payload["subscriptions"],
+                set(response_message.payload["subscriptions"]),
                 response_message.payload["identity_key"],
                 response_message.payload["one_time_keys"],
             )

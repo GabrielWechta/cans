@@ -146,6 +146,7 @@ class SessionsStateMachine:
         self, peer: str, identity_key: str, one_time_key: str
     ) -> None:
         """Add a new potential session."""
+        self.log.debug(f"Adding potential session with {peer}...")
         self.potential_sessions[peer] = PotentialSession(
             identity_key,
             one_time_key,
@@ -164,6 +165,7 @@ class SessionsStateMachine:
         self, peer: str, user_message: CansMessage
     ) -> None:
         """Transition from Potential Session to Pending Session."""
+        self.log.debug(f"Session with {peer} is now pending")
         potential_session = self.potential_sessions.pop(peer)
         self.pending_sessions[peer] = PendingSession(
             account=self.account,

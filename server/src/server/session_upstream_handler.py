@@ -6,7 +6,7 @@ from typing import Callable, Dict
 from common.messages import CansMessage, CansMsgId, cans_recv
 from server.client_session import ClientSession
 from server.database_manager_server import DatabaseManager
-from server.session_event import LoginEvent, SessionEvent
+from server.session_event import LoginEvent, LogoutEvent, SessionEvent
 
 
 class SessionUpstreamHandler:
@@ -35,6 +35,7 @@ class SessionUpstreamHandler:
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
             CansMsgId.PEER_HELLO: self.__handle_message_peer_hello,
             CansMsgId.ADD_FRIEND: self.__handle_message_add_friend,
+            CansMsgId.REQUEST_LOGOUT_NOTIF: self.__handle_request_logout_notif,
             # fmt: off
             CansMsgId.SESSION_ESTABLISHED:
                 self.__handle_message_session_established,
@@ -98,11 +99,35 @@ class SessionUpstreamHandler:
         """Handle message type ADD_FRIEND."""
         peer = message.payload["friend"]
         self.log.debug(f"User {session.user_id} added friend {peer}")
+        session.subscriptions.add(peer)
         await self.database_manager.add_subscriber_of(peer, session.user_id)
         # Check if the new friend is online
         if peer in self.sessions.keys():
             # Peer online, send login event
             event = LoginEvent(peer)
+            await self.__send_event(event, session)
+
+    async def __handle_request_logout_notif(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type REQUEST_LOGOUT_NOTIF."""
+        peer = message.payload["peer"]
+
+        self.log.debug(
+            f"User '{session.user_id}' requested logout notification"
+            + f" for peer '{peer}'"
+        )
+        if peer in self.sessions.keys():
+            # Peer is still active, add us to their one-time subscribers set
+            self.sessions[peer].one_time_subscribers.add(session.user_id)
+        else:
+            # Peer is offline, send logout notification immediately to
+            # remediate the race condition
+            self.log.info(
+                f"'{peer}' already offline when '{session.user_id}'"
+                + " requested logout notification"
+            )
+            event = LogoutEvent(peer)
             await self.__send_event(event, session)
 
     async def __handle_message_session_established(

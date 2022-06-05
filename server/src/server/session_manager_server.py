@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Callable, Dict, List
+from typing import Callable, Dict, Set
 
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
@@ -61,7 +61,7 @@ class SessionManager:
         self,
         conn: WebSocketServerProtocol,
         user_id: str,
-        subscriptions: List[str],
+        subscriptions: Set[str],
         identity_key: str,
         one_time_keys: Dict[str, str],
     ) -> None:
@@ -104,9 +104,6 @@ class SessionManager:
         if receiver in self.sessions.keys():
             # Wrap the message in an event and
             # send it to the appropriate receiver
-            self.log.debug(
-                f"Receiver '{receiver}' online." + " Sending event..."
-            )
             event = MessageEvent(message)
             await self.downstream_handler.send_event(event, receiver)
         elif sender:
@@ -178,16 +175,14 @@ class SessionManager:
         # Notify all subscribers
         for sub in subscribers:
             if sub in self.sessions.keys():
-                # Send a login event to all interested parties
+                # Send an event to all interested parties
                 event = event_constructor(user_id)
                 await self.downstream_handler.send_event(event, sub)
-
-        self.log.debug(f"Sent login notification to {len(subscribers)} users")
 
     async def __update_subscriptions_database(
         self,
         user_id: str,
-        subscriptions: List[str],
+        subscriptions: Set[str],
     ) -> None:
         # Add subscriptions to the database
         for peer in subscriptions:
@@ -207,3 +202,22 @@ class SessionManager:
 
         # Notify all subscribers
         await self.__notify_subscribers(user_id, LogoutEvent)
+        # Send out one-time logout notifications
+        await self.__handle_one_time_logout_notifs(
+            user_id, session.one_time_subscribers
+        )
+
+    async def __handle_one_time_logout_notifs(
+        self, user_id: str, subscribers: Set[str]
+    ) -> None:
+        """Send out one-time logout notifications."""
+        count = 0
+
+        for sub in subscribers:
+            if sub in self.sessions.keys():
+                # Send a logout event to all interested parties
+                event = LogoutEvent(user_id)
+                await self.downstream_handler.send_event(event, sub)
+                count += 1
+
+        self.log.debug(f"Sent one-time logout notification to {count} users")
