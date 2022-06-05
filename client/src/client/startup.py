@@ -11,7 +11,7 @@ from Cryptodome.Cipher import AES, _mode_cbc
 from Cryptodome.Util.Padding import pad, unpad
 from olm import Account
 
-from common.keys import EcPemKeyPair
+from common.keys import EcPemKeyPair, get_private_key_from_pem
 
 
 class Startup:
@@ -128,23 +128,37 @@ class Startup:
                 priv_key_file.write(cipher.iv)
             priv_key_file.write(enc_priv_key)
 
-    def decrypt_key_pair(self, password: str) -> EcPemKeyPair:
-        """Decrypt key files and return them."""
-        pub_key = ""
-        priv_key = ""
-        # Read public key from file
-        with open(self.user_public_key_path, "r") as public_key_file:
-            pub_key = public_key_file.read()
-
+    def _decrypt_private_key(self, password: str) -> str:
+        """Decrypt the private key."""
         # Read private key from file
         with open(self.user_private_key_path, "rb") as private_key_file:
             iv = private_key_file.read(16)
             enc_priv_key = private_key_file.read()
 
-        # Decrypt keys
         cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_CBC, iv=iv)
-        priv_key = unpad(cipher.decrypt(enc_priv_key), AES.block_size).decode(
+        return unpad(cipher.decrypt(enc_priv_key), AES.block_size).decode(
             "utf8"
         )
+
+    def decrypt_key_pair(self, password: str) -> EcPemKeyPair:
+        """Decrypt and verify if private key is correct.
+
+        Regenerate keys if private key is corrupted. Return both keys.
+        """
+        pub_key = ""
+        priv_key = ""
+
+        try:
+            priv_key = self._decrypt_private_key(password)
+            get_private_key_from_pem(priv_key)
+        except ValueError:
+            # Corrupted key so generate new key pair
+            # TODO Figure out if this is correct approach
+            self.generate_key_pair(password)
+            priv_key = self._decrypt_private_key(password)
+
+        # Read public key from file
+        with open(self.user_public_key_path, "r") as public_key_file:
+            pub_key = public_key_file.read()
 
         return priv_key, pub_key
