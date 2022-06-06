@@ -7,12 +7,11 @@ from typing import Callable, List, Set
 
 import pytest
 import websockets.client as ws
-from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, EcPemKeyPair, digest_key
+from common.keys import EcPemKeyPair, digest_key, generate_keys
 from common.messages import CansMessage, CansMsgId, cans_recv
 
 
@@ -122,18 +121,10 @@ class MockClient(Client):
         await self.session_manager.send_message(message)
 
 
-def __generate_keys() -> EcPemKeyPair:
-    """Generate key pair."""
-    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
-    private_key = ec_key.export_key(format="PEM")
-    public_key = ec_key.public_key().export_key(format="PEM")
-    return private_key, public_key
-
-
 async def impl_test_notifications_for_a_friend():
     """Async implementation of the test."""
-    alice_secret, alice_public = __generate_keys()
-    bob_secret, bob_public = __generate_keys()
+    alice_secret, alice_public = generate_keys()
+    bob_secret, bob_public = generate_keys()
 
     alice = MockClient(
         my_keys=(alice_secret, alice_public),
@@ -162,8 +153,8 @@ async def impl_test_notifications_for_a_friend():
 
 async def impl_test_notifications_for_a_stranger():
     """Async implementation of the test."""
-    alice_secret, alice_public = __generate_keys()
-    bob_secret, bob_public = __generate_keys()
+    alice_secret, alice_public = generate_keys()
+    bob_secret, bob_public = generate_keys()
 
     # Alice has no friends
     alice = MockClient(

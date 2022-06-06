@@ -21,6 +21,23 @@ def get_private_key_from_pem(pem: str) -> int:
     return int(ECC.import_key(encoded=pem, curve_name=PKI_CURVE_NAME).d)
 
 
+def get_public_key_pem(pem: str) -> str:
+    """Derive a public key in PEM format from the private key PEM file."""
+    return str(
+        ECC.import_key(encoded=pem, curve_name=PKI_CURVE_NAME)
+        .public_key()
+        .export_key(format="PEM")
+    )
+
+
+def generate_keys() -> EcPemKeyPair:
+    """Generate key pair."""
+    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
+    private_key = ec_key.export_key(format="PEM")
+    public_key = ec_key.public_key().export_key(format="PEM")
+    return str(private_key), str(public_key)
+
+
 def get_schnorr_commitment() -> Tuple[int, str]:
     """Get Schnorr commitment values."""
     commitment = ECC.generate(curve=PKI_CURVE_NAME)
