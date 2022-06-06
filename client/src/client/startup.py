@@ -149,7 +149,9 @@ class Startup:
         priv_key = ""
 
         try:
+            # Check if padding is correct
             priv_key = self._decrypt_private_key(password)
+            # Check it's a valid EC key
             get_private_key_from_pem(priv_key)
         except ValueError:
             # Corrupted key so generate new key pair
