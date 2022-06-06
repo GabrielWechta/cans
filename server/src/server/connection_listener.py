@@ -11,8 +11,10 @@ from typing import Dict, Set, Tuple
 
 import websockets.server as ws
 
+from common.connection import CansStatusCode
 from common.keys import digest_key, get_schnorr_challenge, schnorr_verify
 from common.messages import (
+    CansMessageException,
     SchnorrChallenge,
     SchnorrCommit,
     SchnorrResponse,
@@ -107,15 +109,30 @@ class ConnectionListener:
                 f"User authentication failed: {conn.remote_address[0]}:"
                 + f"{conn.remote_address[1]}"
             )
-            # Terminate the connection with application error code
-            await conn.close(code=3000, reason="Authentication failed")
+            await conn.close(
+                code=CansStatusCode.AUTH_FAILURE,
+                reason="Authentication failed",
+            )
+        except (CansMessageException, AttributeError, KeyError) as e:
+            self.log.error(
+                f"{type(e).__name__} raised when establishing session with"
+                + f" {conn.remote_address[0]}:{conn.remote_address[1]}:"
+                + f" {str(e)}"
+            )
+            await conn.close(
+                code=CansStatusCode.MALFORMED_MESSAGE,
+                reason="Malformed message",
+            )
         except Exception as e:
             self.log.error(
                 f"User {conn.remote_address[0]}:{conn.remote_address[1]}"
-                + f" triggered an exception ({type(e).__name__}): {str(e)}"
+                + " triggered an unexepected exception"
+                + f" ({type(e).__name__}): {str(e)}"
             )
-            # Terminate the connection with application error code
-            await conn.close(code=3001, reason="Serverside exception")
+            await conn.close(
+                code=CansStatusCode.EXCEPTION_RAISED,
+                reason="Serverside exception",
+            )
 
     async def __authenticate_user(
         self, conn: ws.WebSocketServerProtocol

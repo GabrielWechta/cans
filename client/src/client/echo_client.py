@@ -45,9 +45,7 @@ ksLiCIUdTgUnbpVQm7sZQnc54QPzNZGPbxZe7BPhzlNhnuQyHDZ/0Ij6QA==
                 self.session_manager.connect(
                     url=f"wss://{self.server_hostname}:{self.server_port}",
                     certpath=self.certpath,
-                    friends=[
-                        # loneliness
-                    ],
+                    friends=set(),
                 ),
                 self._echo_service(),
                 self._cplane_sink(),

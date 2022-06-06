@@ -19,6 +19,7 @@ from common.messages import (
     ActiveFriends,
     AddFriend,
     CansMessage,
+    CansMessageException,
     CansMsgId,
     PeerHello,
     ReplenishOneTimeKeysResp,
@@ -108,7 +109,7 @@ class SessionManager:
         """Send an outgoing message."""
         await self.upstream_message_queue.put(message)
 
-    async def receive_user_message(self) -> CansMessage:
+    async def receive_user_message(self) -> UserMessage:
         """Wait for an incoming user message."""
         return await self.downstream_user_message_queue.get()
 
@@ -157,9 +158,6 @@ class SessionManager:
             one_time_keys=one_time_keys,
         )
         await cans_send(response_message, conn)
-
-        # TODO: Handle verification failure gracefully (the server will
-        # abort the connection at this point if Schnorr verification fails)
 
         # Receive the active friends list
         active_friends_message: ActiveFriends = await cans_recv(conn)
@@ -231,7 +229,13 @@ class SessionManager:
         """Handle downstream traffic, i.e. server to client."""
         while True:
             message = await cans_recv(conn)
-            await self._handle_incoming_message(conn, message)
+            try:
+                await self._handle_incoming_message(conn, message)
+            except (CansMessageException, AttributeError, KeyError) as e:
+                self.log.error(f"{type(e).__name__}: {str(e)}")
+                await self._handle_message_exception(
+                    conn=conn, message=message, exception=e
+                )
 
     async def _handle_incoming_message(
         self, conn: ws.WebSocketClientProtocol, message: CansMessage
@@ -245,6 +249,17 @@ class SessionManager:
                 "Received unexpected message with ID:"
                 + f"{message.header.msg_id}"
             )
+
+    async def _handle_message_exception(
+        self,
+        conn: ws.WebSocketClientProtocol,
+        message: CansMessage,
+        exception: Exception,
+    ) -> None:
+        """Handle a downstream message exception."""
+        # TODO: Implement me!
+        self.log.error("_handle_message_exception: Implement me!")
+        pass
 
     async def _resolve_race_condition(
         self, hello_message: CansMessage

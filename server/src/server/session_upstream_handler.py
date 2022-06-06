@@ -3,7 +3,14 @@
 import logging
 from typing import Callable, Dict
 
-from common.messages import CansMessage, CansMsgId, cans_recv
+from common.connection import CansStatusCode
+from common.messages import (
+    CansMalformedMessageError,
+    CansMessage,
+    CansMessageException,
+    CansMsgId,
+    cans_recv,
+)
 from server.client_session import ClientSession
 from server.database_manager_server import DatabaseManager
 from server.session_event import LoginEvent, LogoutEvent, SessionEvent
@@ -50,27 +57,30 @@ class SessionUpstreamHandler:
         This API is exposed to the session manager so that it
         can dispatch upstream handling here.
         """
-        while True:
-            # Receive a message from the socket
-            message = await cans_recv(session.connection)
+        try:
+            while True:
+                # Receive a message from the socket
+                message = await cans_recv(session.connection)
 
-            # Validate the message header
-            if self.__upstream_message_valid(message, session):
+                # Validate the message header
+                self.__assert_valid_upstream_message(message, session)
+
                 msg_id = message.header.msg_id
                 if msg_id in self.message_handlers.keys():
                     # Call the relevant handler
                     await self.message_handlers[msg_id](message, session)
                 else:
                     self.log.warning(f"Unsupported message ID: {msg_id}")
-            else:
-                # TODO: Should we terminate the connection here?
-                self.log.warning(
-                    "Received malformed message from"
-                    + f" {session.user_id}:"
-                    + f" id={message.header.msg_id},"
-                    + f" sender={message.header.sender},"
-                    + f" receiver={message.header.receiver}"
-                )
+
+        except (CansMessageException, AttributeError, KeyError) as e:
+            self.log.error(
+                f"{type(e).__name__} in session"
+                + f" with {session.hostname}:{session.port}: {str(e)}"
+            )
+            await session.connection.close(
+                code=CansStatusCode.MALFORMED_MESSAGE,
+                reason="Malformed message",
+            )
 
     async def __handle_message_user_message(
         self, message: CansMessage, session: ClientSession
@@ -150,11 +160,14 @@ class SessionUpstreamHandler:
         # user and the keys are not used by the server, so likely not...
         session.add_one_time_keys(keys)
 
-    def __upstream_message_valid(
+    def __assert_valid_upstream_message(
         self, message: CansMessage, session: ClientSession
-    ) -> bool:
+    ) -> None:
         """Validate an inbound message with regards to the current session."""
-        return message.header.sender == session.user_id
+        if message.header.sender != session.user_id:
+            raise CansMalformedMessageError(
+                f"Header field 'sender' invalid: {message.header.sender}"
+            )
 
     async def __send_event(
         self, event: SessionEvent, session: ClientSession
