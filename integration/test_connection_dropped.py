@@ -6,12 +6,11 @@ import os
 from typing import Callable
 
 import websockets.client as ws
-from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, EcPemKeyPair
+from common.keys import EcPemKeyPair, generate_keys
 
 
 class FaultyClientException(Exception):
@@ -87,19 +86,11 @@ class MockClient(Client):
         )
 
 
-def __generate_keys() -> EcPemKeyPair:
-    """Generate key pair."""
-    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
-    private_key = ec_key.export_key(format="PEM")
-    public_key = ec_key.public_key().export_key(format="PEM")
-    return private_key, public_key
-
-
 def test_connection_dropped():
     """Test server's behaviour on connection dropped."""
     # Run a faulty client that immediately drops the connection
     faulty_client = MockClient(
-        __generate_keys(),
+        generate_keys(),
         FaultySessionManager,
     )
     try:
@@ -108,7 +99,7 @@ def test_connection_dropped():
         faulty_client.log.info("Faulty client terminated abruptly")
 
     good_client = MockClient(
-        __generate_keys(),
+        generate_keys(),
         MockSessionManager,
     )
     good_client.run()

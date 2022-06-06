@@ -5,12 +5,11 @@ import logging
 import os
 
 import pytest
-from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, EcPemKeyPair, digest_key
+from common.keys import EcPemKeyPair, digest_key, generate_keys
 
 
 class MultipleClientsOkException(Exception):
@@ -80,18 +79,10 @@ class MockClient(Client):
             raise e
 
 
-def __generate_keys() -> EcPemKeyPair:
-    """Generate key pair."""
-    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
-    private_key = ec_key.export_key(format="PEM")
-    public_key = ec_key.public_key().export_key(format="PEM")
-    return private_key, public_key
-
-
 def test_multiple_clients():
     """Test running multiple users."""
-    alice_secret, alice_public = __generate_keys()
-    bob_secret, bob_public = __generate_keys()
+    alice_secret, alice_public = generate_keys()
+    bob_secret, bob_public = generate_keys()
 
     alice = MockClient(
         my_keys=(alice_secret, alice_public),

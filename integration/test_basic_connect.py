@@ -6,13 +6,12 @@ import os
 
 import pytest
 import websockets.client as ws
-from Cryptodome.PublicKey import ECC
 from olm import Account
 from websockets.exceptions import ConnectionClosed
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, EcPemKeyPair
+from common.keys import EcPemKeyPair, generate_keys
 
 
 class MockSessionManager(SessionManager):
@@ -67,25 +66,17 @@ class MockClient(Client):
         )
 
 
-def __generate_keys() -> EcPemKeyPair:
-    """Generate key pair."""
-    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
-    private_key = ec_key.export_key(format="PEM")
-    public_key = ec_key.public_key().export_key(format="PEM")
-    return private_key, public_key
-
-
 def test_basic_connect():
     """Test connecting to the server."""
-    client = MockClient(__generate_keys())
+    client = MockClient(generate_keys())
     client.run()
 
 
 def test_failed_authentication():
     """Test failed authentication."""
     # Use non-corresponding keys
-    private_key, _ = __generate_keys()
-    _, public_key = __generate_keys()
+    private_key, _ = generate_keys()
+    _, public_key = generate_keys()
     # Expect authentication failure and connection abort
     with pytest.raises(ConnectionClosed):
         client = MockClient((private_key, public_key))

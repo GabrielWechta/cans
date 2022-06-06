@@ -6,12 +6,11 @@ import os
 from typing import Set
 
 import pytest
-from Cryptodome.PublicKey import ECC
 from olm import Account
 
 from client import Client
 from client.session_manager_client import SessionManager
-from common.keys import PKI_CURVE_NAME, EcPemKeyPair, digest_key
+from common.keys import EcPemKeyPair, digest_key, generate_keys
 from common.messages import CansMessage
 
 
@@ -67,17 +66,9 @@ class MockClient(Client):
         )
 
 
-def __generate_keys() -> EcPemKeyPair:
-    """Generate key pair."""
-    ec_key = ECC.generate(curve=PKI_CURVE_NAME)
-    private_key = ec_key.export_key(format="PEM")
-    public_key = ec_key.public_key().export_key(format="PEM")
-    return private_key, public_key
-
-
 async def impl_test_key_replenishment():
     """Async implementation of the test."""
-    alice_secret, alice_public = __generate_keys()
+    alice_secret, alice_public = generate_keys()
     alice = MockClient(
         my_keys=(alice_secret, alice_public),
         friends=set(),
@@ -90,7 +81,7 @@ async def impl_test_key_replenishment():
         # Run a couple of peers in the background to
         # deplete Alice's one-time keys
         peer = MockClient(
-            my_keys=__generate_keys(),
+            my_keys=generate_keys(),
             friends={digest_key(alice_public)},
         )
         asyncio.create_task(peer.run())

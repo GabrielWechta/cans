@@ -7,11 +7,16 @@ from os import mkdir, path
 from pathlib import Path
 from shutil import rmtree
 
-from Cryptodome.Cipher import AES, _mode_cbc
+from Cryptodome.Cipher import AES, _mode_gcm
 from Cryptodome.Util.Padding import pad, unpad
 from olm import Account
 
-from common.keys import EcPemKeyPair, get_private_key_from_pem
+from common.keys import (
+    EcPemKeyPair,
+    generate_keys,
+    get_private_key_from_pem,
+    get_public_key_pem,
+)
 
 
 class Startup:
@@ -70,12 +75,15 @@ class Startup:
         """
         try:
             drive_UUID = str(
-                subprocess.check_output("blkid -s UUID -o value | head -n 1")
+                subprocess.check_output(
+                    "/usr/bin/blkid -s UUID -o value | /usr/bin/head -n 1"
+                )
             )
             cpu_model = str(
                 subprocess.check_output(
-                    "lscpu | grep 'Model name' | cut -f 2 -d \":\" "
-                    + "| awk '{$1=$1}1'"
+                    "/usr/bin/lscpu | /usr/bin/grep 'Model name' "
+                    + "| /usr/bin/cut -f 2 -d ':' "
+                    + "| /usr/bin/awk '{$1=$1}1'"
                 )
             )
             username = getpass.getuser()
@@ -96,37 +104,23 @@ class Startup:
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).hexdigest()
 
-    def generate_key_pair(self, password: str) -> None:
-        """Run OpenSSL to generate a pair of EC keys.
+    def generate_private_key(self, password: str) -> None:
+        """Run Cryptodome to generate EC private key.
 
-        Save generated values to the .cans/keys directory.
+        Encrypt and save generated private key to the .cans/keys directory.
         """
-        subprocess.run(
-            "openssl ecparam -name prime256v1 -genkey -noout -out "
-            + self.user_private_key_path.as_posix(),
-            shell=True,
-        )
+        priv_key, _ = generate_keys()
 
-        subprocess.run(
-            "openssl ec -in "
-            + self.user_private_key_path.as_posix()
-            + " -pubout -out "
-            + self.user_public_key_path.as_posix(),
-            shell=True,
-        )
-
-        # Encrypt private key with AES-CBC using password
-        with open(self.user_private_key_path, "r") as private_key_file:
-            priv_key = private_key_file.read().encode("utf-8")
-            cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_CBC)
-            enc_priv_key = cipher.encrypt(pad(priv_key, AES.block_size))
-
-        # Overwrite private key with encrypted version
-        with open(self.user_private_key_path, "wb") as priv_key_file:
-            # Save iv at the beginning of the file
-            if isinstance(cipher, _mode_cbc.CbcMode):
-                priv_key_file.write(cipher.iv)
-            priv_key_file.write(enc_priv_key)
+        # Encrypt private key with AES-GCM using password
+        with open(self.user_private_key_path, "wb") as private_key_file:
+            cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_GCM)
+            enc_priv_key = cipher.encrypt(
+                pad(priv_key.encode("utf-8"), AES.block_size)
+            )
+            if isinstance(cipher, _mode_gcm.GcmMode):
+                # Save tag at the beginning of the file
+                private_key_file.write(cipher.nonce)
+            private_key_file.write(enc_priv_key)
 
     def _decrypt_private_key(self, password: str) -> str:
         """Decrypt the private key."""
@@ -135,12 +129,12 @@ class Startup:
             iv = private_key_file.read(16)
             enc_priv_key = private_key_file.read()
 
-        cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_CBC, iv=iv)
+        cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_GCM, nonce=iv)
         return unpad(cipher.decrypt(enc_priv_key), AES.block_size).decode(
             "utf8"
         )
 
-    def decrypt_key_pair(self, password: str) -> EcPemKeyPair:
+    def load_key_pair(self, password: str) -> EcPemKeyPair:
         """Decrypt and verify if private key is correct.
 
         Regenerate keys if private key is corrupted. Return both keys.
@@ -156,11 +150,9 @@ class Startup:
         except ValueError:
             # Corrupted key so generate new key pair
             # TODO Figure out if this is correct approach
-            self.generate_key_pair(password)
+            self.generate_private_key(password)
             priv_key = self._decrypt_private_key(password)
 
-        # Read public key from file
-        with open(self.user_public_key_path, "r") as public_key_file:
-            pub_key = public_key_file.read()
+        pub_key = get_public_key_pem(priv_key)
 
         return priv_key, pub_key
