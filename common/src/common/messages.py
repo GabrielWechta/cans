@@ -324,6 +324,12 @@ class CansDeserializationError(CansMessageException):
     pass
 
 
+class CansMalformedMessageError(CansMessageException):
+    """Error thrown on otherwise malformed message."""
+
+    pass
+
+
 async def cans_recv(
     socket: Union[WebSocketClientProtocol, WebSocketServerProtocol]
 ) -> CansMessage:
@@ -397,6 +403,9 @@ def __validate_format(pretender: dict) -> None:
         for field in pretender.keys():
             if field not in ["header", "payload"]:
                 raise CansDeserializationError(f"Unexpected field: {field}")
+
+    except CansDeserializationError as e:
+        raise e
 
     except Exception as e:
         # Translate any exception to a deserialization error

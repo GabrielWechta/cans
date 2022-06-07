@@ -139,7 +139,7 @@ class SessionManager:
         if session.remaining_keys() < self.ONE_TIME_KEYS_REPLENISH_THRESHOLD:
             self.log.debug(
                 "Requesting a replenishment of keys of user"
-                + f"'{session.user_id}'..."
+                + f" '{session.user_id}'..."
             )
             # If too few keys remaining on the server, request a replenishment
             event = ReplenishKeysEvent(

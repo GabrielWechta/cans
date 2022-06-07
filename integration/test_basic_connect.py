@@ -11,6 +11,7 @@ from websockets.exceptions import ConnectionClosed
 
 from client import Client
 from client.session_manager_client import SessionManager
+from common.connection import CansStatusCode
 from common.keys import EcPemKeyPair, generate_keys
 
 
@@ -44,15 +45,26 @@ class MockClient(Client):
         self.log = logging.getLogger("cans-logger")
         self.log.setLevel(logging.DEBUG)
 
-        # TODO: Remove once beta is released and presented
-        self.echo_peer_id = (
-            "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
-        )
-
         account = Account()
         self.session_manager = MockSessionManager(
             keys=keys,
             account=account,
+        )
+
+    def run(self) -> None:
+        """Run dummy client application. Do not try handling exceptions."""
+        self.event_loop.run_until_complete(
+            asyncio.gather(  # noqa: FKA01
+                # Connect to the server...
+                self.session_manager.connect(
+                    url=f"wss://{self.server_hostname}:{self.server_port}",
+                    certpath=self.certpath,
+                    friends=set(),
+                ),
+                # ...and handle incoming messages
+                self._handle_downstream_user_traffic(),
+                self._handle_downstream_system_traffic(),
+            )
         )
 
     async def _handle_downstream_user_traffic(self) -> None:
@@ -78,6 +90,10 @@ def test_failed_authentication():
     private_key, _ = generate_keys()
     _, public_key = generate_keys()
     # Expect authentication failure and connection abort
-    with pytest.raises(ConnectionClosed):
+    with pytest.raises(ConnectionClosed) as excinfo:
         client = MockClient((private_key, public_key))
         client.run()
+
+    assert (
+        excinfo.value.code == CansStatusCode.AUTH_FAILURE
+    ), "Invalid status code"

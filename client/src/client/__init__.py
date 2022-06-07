@@ -63,8 +63,6 @@ class Client:
         self.myself = self.db_manager.add_friend(
             Friend(id="myself", username="Alice", color="blue")
         )
-
-        # Set identity
         assert self.myself
 
         self.echo_peer_id = (
@@ -103,18 +101,26 @@ class Client:
 
     def run(self) -> None:
         """Run dummy client application."""
-        # Connect to the server
-        self.event_loop.run_until_complete(
-            asyncio.gather(  # noqa: FKA01
-                self.session_manager.connect(
-                    url=f"wss://{self.server_hostname}:{self.server_port}",
-                    certpath=self.certpath,
-                    friends={self.echo_peer_id},
-                ),
-                self._handle_downstream_user_traffic(),
-                self._handle_downstream_system_traffic(),
+        try:
+            self.event_loop.run_until_complete(
+                asyncio.gather(  # noqa: FKA01
+                    # Connect to the server...
+                    self.session_manager.connect(
+                        url=f"wss://{self.server_hostname}:{self.server_port}",
+                        certpath=self.certpath,
+                        friends={self.echo_peer_id},
+                    ),
+                    # ...and handle incoming messages
+                    self._handle_downstream_user_traffic(),
+                    self._handle_downstream_system_traffic(),
+                )
             )
-        )
+        except Exception as e:
+            self.log.critical(
+                f"Fatal exception ({type(e).__name__}): {str(e)}"
+            )
+            # TODO: Handle the exception gracefully at UI level and shut down
+            # the application
 
     async def _handle_downstream_user_traffic(self) -> None:
         """Handle downstream user messages."""
