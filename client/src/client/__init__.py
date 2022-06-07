@@ -32,6 +32,8 @@ class Client:
 
         # TODO: Implement proper password prompts during startup
         # Check if necessary files exist
+        # TODO: if the key is decrypted without password,
+        # please call UI.complete_startup()
         if self.startup.is_first_startup():
             user_passphrase = "SafeAndSecurePassword2137"
             self.password = self.startup.get_key(user_passphrase)
@@ -85,15 +87,35 @@ class Client:
         assert echo_client
         assert eve_client
 
+        # All of those callbacks should be in the form
+        # function(input: str) -> feedback: str
+        # they can be in a different form (like upstream message)
+        # but then they have to have custom implementation
         self.ui = UserInterface(
             loop=self.event_loop,
-            upstream_callback=self._handle_upstream_message,
+            # TODO @Karolina: replace all of those lambdas this with real
+            # callbacks
+            input_callbacks={
+                "upstream_message": self._handle_upstream_message,
+                "decrypt_key": lambda x: ""
+                if self.log.debug("Startup password: " + x)  # type: ignore
+                else "",
+                "set_identity_username": lambda x: ""
+                if self.log.debug("Identity username: " + x)  # type: ignore
+                else "",
+                "set_identity_color": lambda x: ""
+                if self.log.debug("Identity color: " + x)  # type: ignore
+                else "",
+                "set_password": lambda x: ""
+                if self.log.debug("User password: " + x)  # type: ignore
+                else "",
+            },
             identity=self.myself,
             db_manager=self.db_manager,
+            first_startup=self.startup.is_first_startup(),
         )
 
         # self.ui.view.add_chat(echo_client)
-
         self.session_manager = SessionManager(
             keys=(self.priv_key, self.pub_key),
             account=self.account,

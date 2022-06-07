@@ -1,17 +1,22 @@
 """CANS application UI."""
 import asyncio
 import os
+from collections import namedtuple
 from datetime import datetime
 from random import choice
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
+from blessed.formatters import FormattingString
 
 from ..database_manager_client import DatabaseManager
 from ..models import CansMessageState, Friend, Message
 from .input import InputMode
-from .tiles import ChatTile, Tile
+from .state_machines import StartupState, StateMachine
+from .tiles import ChatTile, PromptTile, Tile
 from .view import View
+
+InputState = namedtuple("InputState", "callback_name title prompt validation")
 
 
 class UserInterface:
@@ -20,9 +25,10 @@ class UserInterface:
     def __init__(
         self,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
-        upstream_callback: Callable,
+        input_callbacks: Mapping[str, Callable],
         identity: Friend,
         db_manager: DatabaseManager,
+        first_startup: bool,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
@@ -30,10 +36,11 @@ class UserInterface:
         self.loop = loop
         self.db_manager = db_manager
 
+        # Enter fullscreen mode
         print(self.term.enter_fullscreen, end="")
 
-        # Store the client callback
-        self.upstream_callback = upstream_callback
+        # Store the client callbacks
+        self.input_callbacks = input_callbacks
 
         # Instantiate a view
         self.view = View(
@@ -69,16 +76,16 @@ class UserInterface:
             'r': self.view.layout.cmd_maximize,
 
             # ctrl+a
-            chr(1):     self.view.layout.add,
+            chr(1):     self.reopen_tile,
             # ctrl+d
-            chr(4):     self.view.layout.remove,
+            chr(4):     self.close_tile,
         }  # fmt: skip
         """Key mapping for layout changing commands"""
 
         self.slash_cmds: Mapping[str, Callable[..., Any]] = {
             "chat": self.view.add_chat,
             "swap": self.view.swap_chat,
-            "close": self.view.layout.remove,
+            "close": self.close_tile,
             "help": self.show_help,
             "friends": self.show_friends,
             "add": self.add_friend,
@@ -94,7 +101,84 @@ class UserInterface:
         )
         """System user for system commands"""
 
+        self.startup_states_switches = {
+            StartupState.PROMPT_USERNAME: InputState(
+                callback_name="set_identity_username",
+                title=" 1 - Set username",
+                prompt=f"Welcome to {self.term.red_bold_underline('cans')}! "
+                "Please input your username, it can be changed later. "
+                "Username cannot contain trailing/leading whitespaces and "
+                "cannot be empty.",
+                validation=self.validate_username,
+            ),
+            StartupState.PROMPT_COLOR: InputState(
+                callback_name="set_identity_color",
+                title=" 2 - Set color",
+                prompt="Please input the color you want to "
+                "use for your username, "
+                "it can be changed later.",
+                validation=self.validate_color,
+            ),
+            StartupState.PROMPT_PASSWORD: InputState(
+                callback_name="set_password",
+                title=" [3] - [Optional] Set password",
+                prompt="If you want to have additional protection, input a "
+                "password for your account. Password cannot contain any "
+                "whitespace characters and if provided it should be at  "
+                "least 6 characters long.",
+                validation=self.validate_password,
+            ),
+        }
+        """Startup states in from (callback_name, tile, prompt, validation)"""
+
         self.last_closed_tile: List[Tile] = []
+
+        # launch StartupTile
+        self.first_startup = first_startup
+
+        self.startup_tile: Optional[PromptTile] = None
+        if not self.first_startup:
+            self.startup_tile = self.view.add_startup_tile(
+                prompt_text="Please enter password. Input '/'"
+                " to enter password recovery mode.",
+                title="Startup",
+                validation_function=self.validate_password,
+            )
+        else:
+            self.startup_tile = None
+            self.first_startup_prompt(
+                state=StateMachine(StartupState, state=0).state
+            )
+
+        self.loop.create_task(self.view.render_all())
+
+    def validate_color(self, color: str) -> bool:
+        """Validate if given color exists and is safe to use."""
+        try:
+            color = getattr(self.term, color)
+        except AttributeError:
+            return False
+        # color should always be some string sequence.
+        # by doing it this way we give the user option to user underline,
+        # bold, reverse, background colors etc.
+        # There should be no unsafe Terminal attribute that is
+        # a FormattingString, so this **should** be safe
+        test = isinstance(color, FormattingString)
+        return test
+
+    def validate_password(self, password: str) -> bool:
+        """Validate if given password is valid."""
+        if password == "":
+            return True
+        password_without_whitespace = "".join(password.split())
+        return password == password_without_whitespace and len(password) >= 6
+
+    def validate_username(self, username: str) -> bool:
+        """Validate if given username is valid."""
+        if username == "":
+            return False
+        username_stripped = username.strip()
+        return username == username_stripped
 
     def add_friend(self, username: str, key: str, color: str = "") -> None:
         """Add given key to friendslist."""
@@ -111,8 +195,8 @@ class UserInterface:
                 "white",
             ]
             color = choice(colors)
-        # TODO: some better sanitizing
-        assert getattr(self.term, color), "Color unknown"
+
+        assert self.validate_color(color), "Color unknown"
         # TODO: make it so it has a different message when
         # adding an already used key
         new_user = self.db_manager.add_friend(
@@ -200,6 +284,84 @@ class UserInterface:
         else:
             self.on_new_message_received(message_model, relevant_user)
 
+    def close_tile(self) -> None:
+        """Close focused tile."""
+        target = self.view.layout.current_tile
+        try:
+            # we don't want to close StartupTiles
+            if target and not target == self.startup_tile:
+                self.last_closed_tile.append(target)
+                self.view.layout.remove(target)
+        except IndexError:
+            return
+
+    def reopen_tile(self) -> None:
+        """Reopen last closed tile."""
+        target = self.view.layout.current_tile
+        if len(self.last_closed_tile) > 0:
+            target = self.last_closed_tile.pop()
+
+            # if were reopening chat it's safer to recreate it,
+            # to have the entire message history
+            if isinstance(target, ChatTile):
+                self.view.add_chat(target.chat_with)
+            else:
+                self.view.layout.add(target)
+        else:
+            return
+
+    def commands_allowed(self) -> bool:
+        """Determine whether user can use commands.
+
+        For example during startup, user should not be able to issue commands
+        """
+        if self.startup_tile in self.view.layout.tiles:  # type: ignore
+            return False
+        else:
+            return True
+
+    async def complete_startup(self) -> None:
+        """Close the startup tile and allow for normal mode of operation."""
+        self.view.layout.remove(self.startup_tile)  # type: ignore
+        self.startup_tile = None
+
+        welcome_screen = PromptTile(
+            prompt_text=f"Hello "
+            f"{getattr(self.term, self.myself.color)(self.myself.username)}"
+            f"! Use /chat [username] to start chatting, "
+            f"or type /friends to see your friendslist.",
+            title="Welcome!",
+            input_validation_function=None,
+        )
+
+        self.view.layout.add(welcome_screen)
+        await self.view.render_all()
+
+    def first_startup_prompt(self, state: StartupState) -> str:
+        """
+        Set valid prompt tile as startup tile, based on startup state.
+
+        Returns callback_name of callback to call.
+        """
+        case = self.startup_states_switches.get(state, "Invalid state")
+
+        assert isinstance(case, InputState)
+
+        if (
+            not self.startup_tile
+            or self.startup_tile.title != "Startup" + case[1]
+        ):
+            new_startup = self.view.add_startup_tile(
+                prompt_text=case.prompt,
+                title="Startup" + case.title,
+                validation_function=case.validation,
+            )
+            if self.startup_tile:
+                self.view.layout.remove(self.startup_tile)
+            self.startup_tile = new_startup
+
+        return case[0]
+
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""
         # set of focues commands, we use to not re render
@@ -210,6 +372,9 @@ class UserInterface:
             self.view.layout.cmd_left,
             self.view.layout.cmd_right,
         ]
+
+        if self.first_startup:
+            first_startup_sm = StateMachine(StartupState, state=0)
 
         # run forever
         while True:
@@ -226,23 +391,16 @@ class UserInterface:
             # handle graceful exit
             if mode == InputMode.EXIT:
                 print(self.term.exit_fullscreen)
+                # TODO: add callback to client to
+                # gracefully close the application
                 os._exit(0)
 
             # command mode
-            elif mode == InputMode.COMMAND:
+            elif mode == InputMode.COMMAND and self.commands_allowed():
                 try:
                     if input_text[0] in self.slash_cmds:
                         cmd = self.slash_cmds[input_text[0]]
-                        if cmd == self.view.layout.remove:
-                            target = self.view.layout.current_tile
-                            try:
-                                if target:
-                                    self.last_closed_tile.append(target)
-                                    cmd(target)
-                            except IndexError:
-                                continue
-                        else:
-                            cmd(*input_text[1])
+                        cmd(*input_text[1])
 
                         await self.view.layout.render_all()
                     else:
@@ -263,17 +421,8 @@ class UserInterface:
             elif mode == InputMode.LAYOUT and input_text in self.cmds_layout:
                 cmd = self.cmds_layout[input_text]
                 if cmd:
-                    # handle tile removal
-                    if cmd == self.view.layout.remove:
-                        target = self.view.layout.current_tile
-                        try:
-                            if target:
-                                self.last_closed_tile.append(target)
-                                cmd(target)
-                        except IndexError:
-                            continue
                     # handle last closed tile reopening
-                    elif cmd == self.view.layout.add:
+                    if cmd == self.view.layout.add:
                         if len(self.last_closed_tile) > 0:
                             target = self.last_closed_tile.pop()
                             cmd(target)
@@ -291,7 +440,7 @@ class UserInterface:
             elif mode == InputMode.NORMAL:
                 tile = self.view.layout.current_tile
 
-                if tile and isinstance(tile, ChatTile):
+                if tile and isinstance(tile, ChatTile) and input_text != "":
                     # handle buffer scroll
                     if input_text == self.term.KEY_UP:
                         tile.increment_offset()
@@ -320,12 +469,66 @@ class UserInterface:
                             to_user=tile.chat_with.id,
                         )
                         # pass the message to the client core
-                        await self.upstream_callback(new_message)
+                        await self.input_callbacks["upstream_message"](
+                            new_message
+                        )
 
-                elif (
-                    tile
-                    and isinstance(tile, Tile)
-                    and isinstance(input_text, str)
+                # Prompt Tile handling
+                elif isinstance(tile, PromptTile) and isinstance(
+                    input_text, str
                 ):
-                    tile.consume_input(input_text, self.term)
-                    pass
+                    # if validfation function is set, first validate input
+                    if tile.input_validation:
+                        validation = tile.input_validation(input_text)
+                        if not validation:
+                            feedback = (
+                                "Input validation failed. "
+                                "Try with different input."
+                            )
+                            await tile.consume_input(feedback, self.term)
+                            continue
+
+                    # startup handling
+                    if tile == self.startup_tile:
+
+                        # First startup handling
+                        if self.first_startup:
+                            callback = self.first_startup_prompt(
+                                first_startup_sm.state
+                            )
+                            feedback = self.input_callbacks[callback](
+                                input_text
+                            )
+                            if feedback == "":
+                                if first_startup_sm.is_last:
+                                    await self.complete_startup()
+                                else:
+                                    self.first_startup_prompt(
+                                        first_startup_sm.next()  # type: ignore
+                                    )
+                                await self.view.render_all()
+                                continue
+                            await self.startup_tile.consume_input(
+                                feedback, self.term
+                            )
+                        # Normal startup handling
+                        else:
+                            # TODO: add calback to password check function
+                            # feedback = callback(password = input_text)
+                            # TODO: add password recovery mode
+                            feedback = self.input_callbacks["decrypt_key"](
+                                input_text
+                            )
+                            if feedback == "":
+                                await self.complete_startup()
+                                await self.view.render_all()
+                                continue
+                            await self.startup_tile.consume_input(
+                                feedback, self.term
+                            )
+                    else:
+                        await tile.consume_input(
+                            f"Use {self.term.purple_bold('/chat')} to chat, "
+                            "don't waste your time here",
+                            self.term,
+                        )
