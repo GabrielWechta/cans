@@ -251,7 +251,7 @@ class UserInterface:
             prompt_text=f"Hello "
             f"{getattr(self.term, self.myself.color)(self.myself.username)}"
             f"! Use /chat [username] to start chatting, "
-            f"or type /friends to see your friendslits.",
+            f"or type /friends to see your friendslist.",
             title="Welcome!",
         )
 
