@@ -15,7 +15,7 @@ from blessed import Terminal
 
 from ..database_manager_client import DatabaseManager
 from ..models import Friend, Message
-from .tiles import ChatTile, HeaderTile, InputTile
+from .tiles import ChatTile, HeaderTile, InputTile, PromptTile
 from .tiling_managers import MonadTallLayout
 
 
@@ -48,7 +48,7 @@ class View:
         # create a header tile -- always on top
         header = HeaderTile(
             name="Title bar",
-            title=term.red_underline("cans") + " secure messenger",
+            title=term.red_underline_bold("cans") + " secure messenger",
             right_title=term.purple_underline("β") + "-version",
             width=term.width,
             height=2,
@@ -131,6 +131,25 @@ class View:
         pool = concurrent.futures.ThreadPoolExecutor()
         await self.loop.run_in_executor(pool, task, *args)  # noqa: FKA01
 
+    def add_startup_tile(self, first_startup: bool) -> PromptTile:
+        """Add startup tile."""
+        if first_startup:
+            startup = PromptTile(
+                name="Startup",
+                title=f"First {self.term.red_underline_bold('cans')} startup",
+                prompt_text="Please enter password for the first time.",
+            )
+        else:
+            startup = PromptTile(
+                name="Startup",
+                title="",  # f"{self.term.red_underline('cans')} first startup"
+                prompt_text="Please enter password. "
+                "Input '/' to enter password recovery mode.",
+            )
+
+        self.layout.add(startup)
+        return startup
+
     def on_resize(self, *args: str) -> None:
         """React to screen resize."""
         self.layout.screen_rect_change(
@@ -147,7 +166,6 @@ class View:
 
     def add_chat(self, chat_with: Union[Friend, str]) -> None:
         """Add a chat tile with a given user."""
-        # TODO: get it from DB
         if isinstance(chat_with, str):
             chat_with = chat_with.lower()
             friends = self.get_friends()

@@ -24,7 +24,7 @@ class Tile:
 
     def __init__(
         self,
-        name: str,
+        name: str = "",
         width: int = 0,
         height: int = 0,
         x: int = 0,
@@ -80,6 +80,16 @@ class Tile:
         self._height = height
         self.real_size()
 
+    @property
+    def real_x(self) -> int:
+        """Return real x of a Tile (accounting margins)."""
+        return self.x + int("l" in self.margins)
+
+    @property
+    def real_y(self) -> int:
+        """Return real y of a Tile (accounting margins and titlebar)."""
+        return self.y + int("u" in self.margins) + 1
+
     async def consume_input(self, inp: str, t: Terminal) -> None:
         """Consume some input in some way."""
         self.body = inp
@@ -110,31 +120,15 @@ class Tile:
         # render title bar
         await self.render_titlebar(t)
 
-        # for now just fill the Tile with some symbol
-        for y in range(0 + 1, (self.real_height + 1)):  # +1 for title
-            with t.hidden_cursor(), t.location(
-                (self.x + int("l" in self.margins)),
-                (self.y + int("u" in self.margins) + y),
-            ):
-                out = (self.real_width) * " "
-                if not self.focused:
-                    print(out, end="")
-                else:
-                    print(out, end="")
-                    # print(t.red(out), end="")
-        with t.hidden_cursor(), t.location(
-            (self.x + int("l" in self.margins)),
-            (self.y + int("u" in self.margins) + 1),
-        ):
-            print(self.truncate(str(self.body), t))
+        self.clear_tile(t)
         # print margins
         await self.render_margins(t)
 
     async def render_titlebar(self, t: Terminal) -> None:
         """Render title bar of a Tile."""
         with t.hidden_cursor(), t.location(
-            self.x + int("l" in self.margins),
-            self.y + int("u" in self.margins),
+            self.real_x,
+            self.real_y - 1,
         ):
             title = self.title if self.title != "" else self.name
             out = self.truncate(title, t)
@@ -185,6 +179,39 @@ height:         {self.height}
 ----------------
         """
 
+    def print_buffer(
+        self,
+        buffer: List[str],
+        t: Terminal,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> None:
+        """Print a buffer inside of the tile viewing box."""
+        # truncate the buffer to fit in the box
+        buffer[: min(height, self.real_height - y)]
+        if x < 0:
+            x = 0
+        if y < 0:
+            y = 0
+        for i, line in enumerate(buffer):
+            # truncate the line to fit in the box
+            with t.location(
+                x=self.real_x + x, y=self.real_y + y + i
+            ), t.hidden_cursor():
+                print(
+                    t.truncate(line, min(width, self.real_width - x)), end=""
+                )
+
+    def clear_tile(self, t: Terminal) -> None:
+        """Clear tile for rendering."""
+        for i in range(self.real_height):
+            with t.location(
+                x=self.real_x, y=self.real_y + i
+            ), t.hidden_cursor():
+                print(" " * self.real_width, end="")
+
 
 class HeaderTile(Tile):
     """Header Tile."""
@@ -192,7 +219,7 @@ class HeaderTile(Tile):
     def __init__(
         self, right_title: str = "", *args: Any, **kwargs: Any
     ) -> None:
-        """Init input Tile."""
+        """Init Header Tile."""
         self.right_title = right_title
         Tile.__init__(self, *args, **kwargs)
 
@@ -209,6 +236,63 @@ class HeaderTile(Tile):
         """Render the Tile."""
         await self.render_margins(t)
         await self.render_titlebar(t)
+
+
+class PromptTile(Tile):
+    """Prompt Tile.
+
+    It's launched at the startup of the program, prompts
+    user for password. If it is the first password, it has
+    some additional features as well.
+    """
+
+    def __init__(self, prompt_text: str, *args: Any, **kwargs: Any) -> None:
+        """Init Prompt Tile."""
+        Tile.__init__(self, *args, **kwargs)
+        self.feedback = ""
+        self.prompt_text = prompt_text
+
+    async def render(self, t: Terminal) -> None:
+        """Render the Prompt Tile."""
+        await self.render_margins(t)
+        await self.render_titlebar(t)
+
+        # golden ratio :O
+        phi = 1.618033988
+
+        # long side of golden rectangle
+        # a >= sqrt( len(prompt) * phi )
+        # b = a / phi
+        a = math.ceil(math.sqrt((len(self.prompt_text)) * phi))
+        # b = math.ceil(a / phi)
+        # monospace character width is ~60^ of height, gotta adjust
+        prompt_width = min(self.real_width, math.ceil(a / 0.6))
+
+        # construct the text print
+        prompt = t.wrap(self.prompt_text, prompt_width)
+        prompt += t.wrap(self.feedback, prompt_width)
+        prompt = (
+            [t.bold_purple("-") * prompt_width]
+            + prompt
+            + [t.bold_purple("-") * prompt_width]
+        )
+        prompt = [t.center(text, prompt_width) for text in prompt]
+        prompt_height = len(prompt)
+
+        self.clear_tile(t)
+        self.print_buffer(
+            prompt,
+            t,
+            x=int(self.real_width / 2 - prompt_width / 2),
+            y=int(self.real_height / 2 - prompt_height / 2),
+            height=prompt_height,
+            width=prompt_width,
+        )
+
+    async def consume_input(self, inp: str, t: Terminal) -> None:
+        """Consume feedback input."""
+        self.feedback = t.red("! ") + inp + t.red(" !")
+        await self.render(t)
 
 
 class InputTile(Tile):
@@ -269,7 +353,9 @@ class InputTile(Tile):
         prompt_location = self.prompt_location()
         # move cursor to prompt
         run_coroutine_threadsafe(
-            self.print(term.move_xy(prompt_location[0], prompt_location[1])),
+            self.print_threadsafe(
+                term.move_xy(prompt_location[0], prompt_location[1])
+            ),
             loop,
         )
         # basically run forever
@@ -280,6 +366,7 @@ class InputTile(Tile):
                 x_pos = prompt_location[0] + term.length(input_text)
                 y_pos = prompt_location[1]
 
+                # TODO: implement timeout to have refresh functionality
                 val = term.inkey()
 
                 # if in normal mode and input is alphanumeric, move cursor
@@ -298,7 +385,7 @@ class InputTile(Tile):
 
                 # set cursor position
                 run_coroutine_threadsafe(
-                    self.print(
+                    self.print_threadsafe(
                         term.move_xy(
                             x_pos
                             + term.length(add_input)
@@ -362,7 +449,7 @@ class InputTile(Tile):
                             )
 
                             run_coroutine_threadsafe(
-                                self.print(
+                                self.print_threadsafe(
                                     term.move_xy(
                                         prompt_location[0], prompt_location[1]
                                     ),
@@ -376,7 +463,7 @@ class InputTile(Tile):
                         ):
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print(
+                                self.print_threadsafe(
                                     term.move_xy(
                                         prompt_location[0]
                                         + term.length(input_text),
@@ -398,7 +485,7 @@ class InputTile(Tile):
                         self.mode = InputMode.COMMAND
                         input_text = ""
                         run_coroutine_threadsafe(
-                            self.print(
+                            self.print_threadsafe(
                                 term.move_xy(
                                     prompt_location[0] + 1, prompt_location[1]
                                 ),
@@ -436,14 +523,16 @@ class InputTile(Tile):
                         input_text = ""
 
                         run_coroutine_threadsafe(
-                            self.print(
+                            self.display_prompt("", term), loop
+                        )
+                        run_coroutine_threadsafe(
+                            self.print_threadsafe(
                                 term.move_xy(
                                     prompt_location[0], prompt_location[1]
                                 ),
                             ),
                             loop,
                         )
-                        run_coroutine_threadsafe(self.clear_input(term), loop)
 
                     else:
                         # if enter was pressed, return input
@@ -464,15 +553,15 @@ class InputTile(Tile):
                             input_text = ""
                             self.mode = InputMode.NORMAL
                             run_coroutine_threadsafe(
-                                self.print(
+                                self.display_prompt("", term), loop
+                            )
+                            run_coroutine_threadsafe(
+                                self.print_threadsafe(
                                     term.move_xy(
                                         prompt_location[0], prompt_location[1]
                                     ),
                                 ),
                                 loop,
-                            )
-                            run_coroutine_threadsafe(
-                                self.clear_input(term), loop
                             )
                             continue
                         # handle backspace
@@ -482,7 +571,7 @@ class InputTile(Tile):
                         ):
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print(
+                                self.print_threadsafe(
                                     term.move_xy(
                                         prompt_location[0]
                                         + term.length(input_text)
@@ -502,28 +591,28 @@ class InputTile(Tile):
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""
         text = ""
+        prompt_location = self.prompt_location()
+        print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
         await self.display_prompt(text, t)
 
     async def display_prompt(self, text: str, t: Terminal) -> None:
         """Display text in the input prompt."""
         prompt_location = self.prompt_location()
-        x_pos = prompt_location[0]
+        x_pos = prompt_location[0] - t.length(self.prompt)
         y_pos = prompt_location[1]
 
         with t.hidden_cursor(), t.location(x_pos, y_pos):
-            out = self.truncate_input(text, t)
+            out = self.truncate_input(self.prompt + text, t)
             out = t.ljust(out, self.real_width)
             print(out, end="")
 
-    async def print(self, text: str) -> None:
+    async def print_threadsafe(self, text: str) -> None:
         """Print given message asynchronously."""
         print(text, end="", flush=True)
 
     def prompt_location(self) -> Tuple[int, int]:
         """Return x and y coordinates of prompt."""
-        x_pos = (
-            Terminal().length(self.prompt) + self.x + int("l" in self.margins)
-        )
+        x_pos = Terminal().length(self.prompt) + self.real_x
         y_pos = self.y + self.prompt_position
 
         return x_pos, y_pos
@@ -670,7 +759,7 @@ class ChatTile(Tile):
             # print messages
             for y in range(0 + 1, (self.real_height + 1)):  # +1 for title
                 with t.hidden_cursor(), t.location(
-                    (self.x + int("l" in self.margins)),
+                    (self.real_x),
                     (
                         self.y
                         + int("u" in self.margins)

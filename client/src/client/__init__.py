@@ -90,6 +90,7 @@ class Client:
             upstream_callback=self._handle_upstream_message,
             identity=self.myself,
             db_manager=self.db_manager,
+            first_startup=self.startup.is_first_startup(),
         )
 
         # self.ui.view.add_chat(echo_client)

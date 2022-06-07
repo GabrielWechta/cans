@@ -10,7 +10,7 @@ from blessed import Terminal
 from ..database_manager_client import DatabaseManager
 from ..models import CansMessageState, Friend, Message
 from .input import InputMode
-from .tiles import ChatTile, Tile
+from .tiles import ChatTile, PromptTile, Tile
 from .view import View
 
 
@@ -23,6 +23,7 @@ class UserInterface:
         upstream_callback: Callable,
         identity: Friend,
         db_manager: DatabaseManager,
+        first_startup: bool,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
@@ -30,6 +31,7 @@ class UserInterface:
         self.loop = loop
         self.db_manager = db_manager
 
+        # Enter fullscreen mode
         print(self.term.enter_fullscreen, end="")
 
         # Store the client callback
@@ -69,16 +71,16 @@ class UserInterface:
             'r': self.view.layout.cmd_maximize,
 
             # ctrl+a
-            chr(1):     self.view.layout.add,
+            chr(1):     self.reopen_tile,
             # ctrl+d
-            chr(4):     self.view.layout.remove,
+            chr(4):     self.close_tile,
         }  # fmt: skip
         """Key mapping for layout changing commands"""
 
         self.slash_cmds: Mapping[str, Callable[..., Any]] = {
             "chat": self.view.add_chat,
             "swap": self.view.swap_chat,
-            "close": self.view.layout.remove,
+            "close": self.close_tile,
             "help": self.show_help,
             "friends": self.show_friends,
             "add": self.add_friend,
@@ -95,6 +97,11 @@ class UserInterface:
         """System user for system commands"""
 
         self.last_closed_tile: List[Tile] = []
+
+        # launch StartupTile
+        self.startup_tile = self.view.add_startup_tile(first_startup)
+
+        self.loop.create_task(self.view.render_all())
 
     def add_friend(self, username: str, key: str, color: str = "") -> None:
         """Add given key to friendslist."""
@@ -200,6 +207,57 @@ class UserInterface:
         else:
             self.on_new_message_received(message_model, relevant_user)
 
+    def close_tile(self) -> None:
+        """Close focused tile."""
+        target = self.view.layout.current_tile
+        try:
+            # we don't want to close StartupTiles
+            if target and not target == self.startup_tile:
+                self.last_closed_tile.append(target)
+                self.view.layout.remove(target)
+        except IndexError:
+            return
+
+    def reopen_tile(self) -> None:
+        """Reopen last closed tile."""
+        target = self.view.layout.current_tile
+        if len(self.last_closed_tile) > 0:
+            target = self.last_closed_tile.pop()
+
+            # if were reading chat it's safer to recreate it,
+            # to have the entire message history
+            if isinstance(target, ChatTile):
+                self.view.add_chat(target.chat_with)
+            else:
+                self.view.layout.add(target)
+        else:
+            return
+
+    def commands_allowed(self) -> bool:
+        """Determine whether user can use commands.
+
+        For example during startup, user should not be able to issue commands
+        """
+        if self.startup_tile in self.view.layout.tiles:
+            return False
+        else:
+            return True
+
+    async def complete_startup(self) -> None:
+        """Close the startup tile and allow for normal mode of operation."""
+        self.view.layout.remove(self.startup_tile)
+
+        welcome_screen = PromptTile(
+            prompt_text=f"Hello "
+            f"{getattr(self.term, self.myself.color)(self.myself.username)}"
+            f"! Use /chat [username] to start chatting, "
+            f"or type /friends to see your friendslits.",
+            title="Welcome!",
+        )
+
+        self.view.layout.add(welcome_screen)
+        await self.view.render_all()
+
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""
         # set of focues commands, we use to not re render
@@ -229,20 +287,11 @@ class UserInterface:
                 os._exit(0)
 
             # command mode
-            elif mode == InputMode.COMMAND:
+            elif mode == InputMode.COMMAND and self.commands_allowed():
                 try:
                     if input_text[0] in self.slash_cmds:
                         cmd = self.slash_cmds[input_text[0]]
-                        if cmd == self.view.layout.remove:
-                            target = self.view.layout.current_tile
-                            try:
-                                if target:
-                                    self.last_closed_tile.append(target)
-                                    cmd(target)
-                            except IndexError:
-                                continue
-                        else:
-                            cmd(*input_text[1])
+                        cmd(*input_text[1])
 
                         await self.view.layout.render_all()
                     else:
@@ -263,17 +312,8 @@ class UserInterface:
             elif mode == InputMode.LAYOUT and input_text in self.cmds_layout:
                 cmd = self.cmds_layout[input_text]
                 if cmd:
-                    # handle tile removal
-                    if cmd == self.view.layout.remove:
-                        target = self.view.layout.current_tile
-                        try:
-                            if target:
-                                self.last_closed_tile.append(target)
-                                cmd(target)
-                        except IndexError:
-                            continue
                     # handle last closed tile reopening
-                    elif cmd == self.view.layout.add:
+                    if cmd == self.view.layout.add:
                         if len(self.last_closed_tile) > 0:
                             target = self.last_closed_tile.pop()
                             cmd(target)
@@ -321,11 +361,20 @@ class UserInterface:
                         )
                         # pass the message to the client core
                         await self.upstream_callback(new_message)
-
-                elif (
-                    tile
-                    and isinstance(tile, Tile)
-                    and isinstance(input_text, str)
+                elif tile == self.startup_tile and isinstance(input_text, str):
+                    # TODO: add calback to password check function
+                    # feedback = callback(password = input_text)
+                    # TODO: add password recovery mode
+                    feedback = "Error"
+                    if feedback == "" or input_text == "test":
+                        await self.complete_startup()
+                        continue
+                    await tile.consume_input(feedback, self.term)
+                elif isinstance(tile, PromptTile) and isinstance(
+                    input_text, str
                 ):
-                    tile.consume_input(input_text, self.term)
-                    pass
+                    await tile.consume_input(
+                        f"Use {self.term.purple_bold('/chat')} to chat, "
+                        "don't waste your time here",
+                        self.term,
+                    )
