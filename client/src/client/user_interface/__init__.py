@@ -532,6 +532,3 @@ class UserInterface:
                             "don't waste your time here",
                             self.term,
                         )
-
-                elif tile and isinstance(input_text, str):
-                    tile.consume_input(input_text, t=self.term)
