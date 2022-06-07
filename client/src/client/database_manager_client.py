@@ -25,7 +25,7 @@ class DatabaseManager:
 
     def initialize(self) -> None:
         """Set up the connection with application's database."""
-        self.db = SqlCipherDatabase(self._db_name, self._db_pass)
+        self.db = SqlCipherDatabase(self._db_name, passphrase=self._db_pass)
         db_proxy.initialize(self.db)
         self.db.create_tables([Friend, Message, Setting])
 
