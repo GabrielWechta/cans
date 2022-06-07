@@ -9,7 +9,7 @@ import logging
 import signal
 from datetime import datetime
 from threading import Event
-from typing import Any, Callable, List, Mapping, Union
+from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
@@ -131,21 +131,19 @@ class View:
         pool = concurrent.futures.ThreadPoolExecutor()
         await self.loop.run_in_executor(pool, task, *args)  # noqa: FKA01
 
-    def add_startup_tile(self, first_startup: bool) -> PromptTile:
+    def add_startup_tile(
+        self,
+        prompt_text: str,
+        title: str = "",
+        validation_function: Optional[Callable[[str], bool]] = None,
+    ) -> PromptTile:
         """Add startup tile."""
-        if first_startup:
-            startup = PromptTile(
-                name="Startup",
-                title=f"First {self.term.red_underline_bold('cans')} startup",
-                prompt_text="Please enter password for the first time.",
-            )
-        else:
-            startup = PromptTile(
-                name="Startup",
-                title="",  # f"{self.term.red_underline('cans')} first startup"
-                prompt_text="Please enter password. "
-                "Input '/' to enter password recovery mode.",
-            )
+        startup = PromptTile(
+            name="Startup",
+            title=title,
+            prompt_text=prompt_text,
+            input_validation_function=validation_function,
+        )
 
         self.layout.add(startup)
         return startup

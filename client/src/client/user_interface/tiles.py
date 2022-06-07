@@ -4,7 +4,7 @@ import math
 from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
 from datetime import datetime
 from threading import Event
-from typing import Any, List, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from blessed import Terminal, keyboard
 
@@ -120,7 +120,7 @@ class Tile:
         # render title bar
         await self.render_titlebar(t)
 
-        self.clear_tile(t)
+        await self.clear_tile(t)
         # print margins
         await self.render_margins(t)
 
@@ -179,7 +179,7 @@ height:         {self.height}
 ----------------
         """
 
-    def print_buffer(
+    async def print_buffer(
         self,
         buffer: List[str],
         t: Terminal,
@@ -190,11 +190,12 @@ height:         {self.height}
     ) -> None:
         """Print a buffer inside of the tile viewing box."""
         # truncate the buffer to fit in the box
-        buffer[: min(height, self.real_height - y)]
         if x < 0:
             x = 0
         if y < 0:
             y = 0
+        buffer = buffer[: min(height, self.real_height - y)]
+
         for i, line in enumerate(buffer):
             # truncate the line to fit in the box
             with t.location(
@@ -204,7 +205,7 @@ height:         {self.height}
                     t.truncate(line, min(width, self.real_width - x)), end=""
                 )
 
-    def clear_tile(self, t: Terminal) -> None:
+    async def clear_tile(self, t: Terminal) -> None:
         """Clear tile for rendering."""
         for i in range(self.real_height):
             with t.location(
@@ -246,16 +247,26 @@ class PromptTile(Tile):
     some additional features as well.
     """
 
-    def __init__(self, prompt_text: str, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        prompt_text: str,
+        input_validation_function: Optional[Callable[[str], bool]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         """Init Prompt Tile."""
         Tile.__init__(self, *args, **kwargs)
         self.feedback = ""
         self.prompt_text = prompt_text
 
+        # if no validation is set it will always validate.
+        # Validation function should return a boolean
+        # Validation requirements should be stated in the prompt_text
+        self.input_validation = input_validation_function
+
     async def render(self, t: Terminal) -> None:
         """Render the Prompt Tile."""
-        await self.render_margins(t)
-        await self.render_titlebar(t)
+        await self.clear_tile(t)
 
         # golden ratio :O
         phi = 1.618033988
@@ -279,15 +290,16 @@ class PromptTile(Tile):
         prompt = [t.center(text, prompt_width) for text in prompt]
         prompt_height = len(prompt)
 
-        self.clear_tile(t)
-        self.print_buffer(
+        await self.print_buffer(
             prompt,
             t,
-            x=int(self.real_width / 2 - prompt_width / 2),
+            x=int(self.real_width / 2 - math.ceil(prompt_width / 2)),
             y=int(self.real_height / 2 - prompt_height / 2),
             height=prompt_height,
             width=prompt_width,
         )
+        await self.render_margins(t)
+        await self.render_titlebar(t)
 
     async def consume_input(self, inp: str, t: Terminal) -> None:
         """Consume feedback input."""
@@ -439,7 +451,7 @@ class InputTile(Tile):
                                 loop,
                             )
                         # if enter was pressed, return input
-                        elif val.code == term.KEY_ENTER and input_text != "":
+                        elif val.code == term.KEY_ENTER:
 
                             run_coroutine_threadsafe(
                                 self.input_queue.put(
