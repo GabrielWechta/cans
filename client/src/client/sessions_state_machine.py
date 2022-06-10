@@ -127,7 +127,7 @@ class SessionsStateMachine:
         else:
             raise StateMachineInconsistency(
                 "Tried fetching an encryption callback for an"
-                + f" invalid session with peer {peer}"
+                + f" invalid session with peer '{peer}'"
             )
 
     def get_decryption_callback(self, peer: str) -> Callable:
@@ -139,14 +139,14 @@ class SessionsStateMachine:
         else:
             raise StateMachineInconsistency(
                 "Tried fetching a decryption callback for an"
-                + f" invalid session with peer {peer}"
+                + f" invalid session with peer '{peer}'"
             )
 
     def add_potential_session(
         self, peer: str, identity_key: str, one_time_key: str
     ) -> None:
         """Add a new potential session."""
-        self.log.debug(f"Adding potential session with {peer}...")
+        self.log.debug(f"Adding potential session with '{peer}'...")
         self.potential_sessions[peer] = PotentialSession(
             identity_key,
             one_time_key,
@@ -165,7 +165,7 @@ class SessionsStateMachine:
         self, peer: str, user_message: CansMessage
     ) -> None:
         """Transition from Potential Session to Pending Session."""
-        self.log.debug(f"Session with {peer} is now pending")
+        self.log.debug(f"Session with '{peer}' is now pending")
         potential_session = self.potential_sessions.pop(peer)
         self.pending_sessions[peer] = PendingSession(
             account=self.account,
@@ -191,7 +191,7 @@ class SessionsStateMachine:
     ) -> None:
         """Transition from Pending Session to Active Session."""
         peer = message.header.sender
-        self.log.debug(f"Activating outbound session with peer {peer}...")
+        self.log.debug(f"Activating outbound session with peer '{peer}'...")
         pending_session = self.pending_sessions.pop(peer)
         # Recover the active session from the pending session
         self.active_sessions[peer] = pending_session.active_session
@@ -207,7 +207,7 @@ class SessionsStateMachine:
     def activate_inbound_session(self, message: PeerHello) -> None:
         """Activate an inbound session based on a received prekey message."""
         peer = message.header.sender
-        self.log.debug(f"Activating inbound session with {peer}...")
+        self.log.debug(f"Activating inbound session with '{peer}'...")
         prekey_message = OlmPreKeyMessage(message.payload["magic"])
         # Remove peer from potential/pending sessions if present
         if peer in self.potential_sessions:

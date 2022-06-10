@@ -6,7 +6,7 @@ import ssl
 from typing import Set, Tuple
 
 import websockets.client as ws
-from olm import Account, OlmMessage
+from olm import Account, OlmMessage, OlmSessionError
 
 from common.keys import (
     EcPemKeyPair,
@@ -16,11 +16,14 @@ from common.keys import (
     get_schnorr_response,
 )
 from common.messages import (
+    AckMessageDelivered,
     ActiveFriends,
     AddFriend,
     CansMessage,
     CansMessageException,
     CansMsgId,
+    GetOneTimeKeyReq,
+    NackMessageNotDelivered,
     PeerHello,
     ReplenishOneTimeKeysResp,
     RequestLogoutNotif,
@@ -73,6 +76,8 @@ class SessionManager:
                 self._handle_message_replenish_one_time_keys_req,
             CansMsgId.SESSION_ESTABLISHED:
                 self._handle_message_session_established,
+            CansMsgId.GET_ONE_TIME_KEY_RESP:
+                self._handle_message_get_one_time_key_resp,
             # fmt: on
         }
         self.upstream_message_queue: asyncio.Queue = asyncio.Queue()
@@ -164,12 +169,12 @@ class SessionManager:
 
         # Create potential sessions with active friends
         for (
-            pub_key_digest,
+            peer_id,
             public_key_bundle,
         ) in active_friends_message.payload["friends"].items():
             identity_key, one_time_key = public_key_bundle
             self.session_sm.add_potential_session(
-                peer=pub_key_digest,
+                peer=peer_id,
                 identity_key=identity_key,
                 one_time_key=one_time_key,
             )
@@ -179,6 +184,16 @@ class SessionManager:
         while True:
             message = await self.upstream_message_queue.get()
             await self._handle_outgoing_message(conn, message)
+            await self._upstream_message_handled_callback(message)
+
+    async def _upstream_message_handled_callback(
+        self, message: CansMessage
+    ) -> None:
+        """Run extra bookkeeping after an upstream message has been handled."""
+        if message.header.msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
+            # Resetting of the peer session has been delayed to ensure that
+            # first the corresponding NACK is sent to the offending peer
+            await self._reset_peer_session(message.header.receiver)
 
     async def _handle_outgoing_message(
         self, conn: ws.WebSocketClientProtocol, message: CansMessage
@@ -196,7 +211,7 @@ class SessionManager:
             # Session not yet established, buffer the user message
             # and initiate the key exchange
             self.log.debug(
-                f"Sending first message to peer {receiver}. Buffering the"
+                f"Sending first message to peer '{receiver}'. Buffering the"
                 + " user message and sending PEER_HELLO first..."
             )
             self.session_sm.make_session_pending(receiver, message)
@@ -209,7 +224,7 @@ class SessionManager:
             # is established
         elif self.session_sm.pending_session_with(receiver):
             self.log.warning(
-                f"Buffering new message to peer {receiver}. Session still"
+                f"Buffering new message to peer '{receiver}'. Session still"
                 + " not established"
             )
             # Still waiting for ACK, buffer the message
@@ -220,7 +235,8 @@ class SessionManager:
             await cans_send(message, conn)
         else:
             self.log.warning(
-                f"No active session with peer {message.header.receiver}"
+                f"No active session with peer '{receiver}'."
+                + f" Dropping message {message.header.msg_id}..."
             )
 
     async def _handle_downstream(
@@ -229,37 +245,79 @@ class SessionManager:
         """Handle downstream traffic, i.e. server to client."""
         while True:
             message = await cans_recv(conn)
-            try:
-                await self._handle_incoming_message(conn, message)
-            except (CansMessageException, AttributeError, KeyError) as e:
-                self.log.error(f"{type(e).__name__}: {str(e)}")
-                await self._handle_message_exception(
-                    conn=conn, message=message, exception=e
-                )
+            await self._handle_incoming_message(message)
 
-    async def _handle_incoming_message(
-        self, conn: ws.WebSocketClientProtocol, message: CansMessage
-    ) -> None:
+    async def _handle_incoming_message(self, message: CansMessage) -> None:
         """Handle an incoming message."""
         if message.header.msg_id in self.message_handlers.keys():
-            # Call a registered handler
-            await self.message_handlers[message.header.msg_id](message)
+            try:
+                # Call a registered handler
+                await self.message_handlers[message.header.msg_id](message)
+            except OlmSessionError as e:
+                self.log.error(
+                    f"Error in session with '{message.header.sender}':"
+                    + f" {str(e)}"
+                )
+                await self._handle_session_error(message)
+            except (CansMessageException, AttributeError, KeyError) as e:
+                # Malformed messages should never make it past the serverside
+                # router - if we receive these something is seriously wrong
+                # - perhaps keep a count of such events and terminate server
+                # connection after a threshold is exceeded
+                self.log.error(f"{type(e).__name__}: {str(e)}")
         else:
             self.log.warning(
                 "Received unexpected message with ID:"
                 + f"{message.header.msg_id}"
             )
 
-    async def _handle_message_exception(
+    async def _reset_peer_session(self, peer: str) -> None:
+        """Reset an OLM session with a peer."""
+        self.log.info(f"Resetting session with peer '{peer}'...")
+        # Terminate the session - note that once we do this any attempt by the
+        # user to send a message will fail until we get the one-time key from
+        # the server and are again able to do peer-to-peer handshake
+        self.session_sm.terminate_session(peer)
+        # Request new one-time key
+        request = GetOneTimeKeyReq(peer)
+        await self.send_message(request)
+
+    async def _handle_session_error(
         self,
-        conn: ws.WebSocketClientProtocol,
         message: CansMessage,
-        exception: Exception,
     ) -> None:
-        """Handle a downstream message exception."""
-        # TODO: Implement me!
-        self.log.error("_handle_message_exception: Implement me!")
-        pass
+        """Handle an OLM session exception."""
+        sender = message.header.sender
+        msg_id = message.header.msg_id
+
+        # Send negative acknowledge to the sender
+        if msg_id == CansMsgId.USER_MESSAGE:
+            negative_acknowledge = NackMessageNotDelivered(
+                receiver=sender,
+                message_target=self.identity,
+                message_id=msg_id,
+                extra=message.payload["cookie"],
+                reason="Crypto session exception",
+            )
+            # The session will be reset by the upstream handler
+            # to avoid a race condition
+            await self.send_message(negative_acknowledge)
+        elif msg_id == CansMsgId.PEER_HELLO:
+            negative_acknowledge = NackMessageNotDelivered(
+                receiver=sender,
+                message_target=self.identity,
+                message_id=msg_id,
+                extra="",
+                reason="Peer-to-peer handshake error",
+            )
+            # The session will be reset by the upstream handler
+            # to avoid a race condition
+            await self.send_message(negative_acknowledge)
+        else:
+            raise NotImplementedError(
+                "Session error handler called for an"
+                + f" unexpected message: {msg_id}"
+            )
 
     async def _resolve_race_condition(
         self, hello_message: CansMessage
@@ -269,7 +327,7 @@ class SessionManager:
         # Decide based on the public ID which party should submit
         if self.identity < peer:
             self.log.info(
-                f"Forfeiting pending outbound session with peer {peer}"
+                f"Forfeiting pending outbound session with '{peer}'"
                 + " and accepting inbound session..."
             )
             # Forfeit the outbound session and accept an inbound session
@@ -282,24 +340,35 @@ class SessionManager:
         acknowledge = SessionEstablished(peer)
         await self.send_message(acknowledge)
 
+    async def _acknowledge_user_message(self, message: CansMessage) -> None:
+        """Send a message delivered acknowledgement back to the sender."""
+        sender = message.header.sender
+        cookie = message.payload["cookie"]
+        acknowledge = AckMessageDelivered(sender, cookie)
+        await self.send_message(acknowledge)
+
     async def _handle_message_user_message(self, message: CansMessage) -> None:
         """Handle message type USER_MESSAGE."""
         sender = message.header.sender
 
         if sender in self.session_sm.active_sessions.keys():
+            # Decrypt the message payload
             message.payload["text"] = self._decrypt_text(
                 sender, message.payload["text"]
             )
+            # Send acknowledge
+            await self._acknowledge_user_message(message)
+            # Forward the message to the core application
             await self.downstream_user_message_queue.put(message)
         else:
             self.log.warning(
-                f"Dropping a user message from {sender}! No active session!"
+                f"Dropping a user message from '{sender}'! No active session!"
             )
 
     async def _handle_message_peer_hello(self, message: CansMessage) -> None:
         """Handle message type PEER_HELLO."""
         peer = message.header.sender
-        self.log.debug(f"Handling PEER_HELLO message from {peer}...")
+        self.log.debug(f"Handling PEER_HELLO message from '{peer}'...")
 
         if peer in self.session_sm.potential_sessions.keys():
             # Activate an inbound session
@@ -309,19 +378,29 @@ class SessionManager:
         elif peer in self.session_sm.pending_sessions.keys():
             # Race condition! Both parties started outbound sessions
             # at the same time!
-            self.log.info(
-                f"Outbound session conflict occurred with peer {peer}"
-            )
+            self.log.info(f"Outbound session conflict occurred with '{peer}'")
             # TODO: Add max number of retries
             await self._resolve_race_condition(message)
         elif peer in self.session_sm.active_sessions.keys():
-            self.log.error(
-                "Internal error! Received PEER_HELLO"
-                + f" from an active peer: {peer}"
+            # Received a handshake request in an already established session
+            # - this could either indicate internal error or a malicious
+            # other party. Either way reset the connection by sending NACK.
+            self.log.warning(
+                "Received PEER_HELLO from an active peer: '{peer}'"
             )
+            negative_acknowledge = NackMessageNotDelivered(
+                receiver=peer,
+                message_target=self.identity,
+                message_id=message.header.msg_id,
+                extra="",
+                reason="Session already established",
+            )
+            await self.send_message(negative_acknowledge)
         else:
             # Hello from a new user
-            self.log.debug(f"Received PEER_HELLO from an unknown user: {peer}")
+            self.log.debug(
+                f"Received PEER_HELLO from an unknown user: '{peer}'"
+            )
             # Activate an inbound session
             self.session_sm.activate_inbound_session(message)
             # Send ACK to the other party
@@ -340,7 +419,7 @@ class SessionManager:
             one_time_key=one_time_key,
         )
 
-        self.log.info(f"{peer} just logged in!")
+        self.log.info(f"'{peer}' just logged in!")
         await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
@@ -348,7 +427,7 @@ class SessionManager:
         peer = message.payload["peer"]
         self.session_sm.terminate_session(peer)
 
-        self.log.info(f"{peer} just logged out!")
+        self.log.info(f"'{peer}' just logged out!")
         await self.downstream_system_message_queue.put(message)
 
     async def __handle_message_ack_message_delivered(
@@ -356,31 +435,59 @@ class SessionManager:
     ) -> None:
         """Handle message type ACK_MESSAGE_DELIVERED."""
         cookie = message.payload["cookie"]
-        self.log.debug(f"Received ACK for message with cookie {cookie}")
+        sender = message.header.sender
+        self.log.debug(
+            f"Received ACK from '{sender}' for message with cookie '{cookie}'"
+        )
         await self.downstream_system_message_queue.put(message)
 
     async def __handle_message_nack_message_not_delivered(
         self, message: CansMessage
     ) -> None:
         """Handle message type NACK_MESSAGE_NOT_DELIVERED."""
+        sender = message.header.sender
         peer = message.payload["message_target"]
+        reason = message.payload["reason"]
 
-        # TODO-UI implement behaviour of peer unavailable
-        self.log.warning(f"Peer {peer} unavailable!")
-        await self.downstream_system_message_queue.put(message)
+        if sender is None:
+            # Message was terminated serverside and not routed to the peer
+            self.log.warning(
+                f"Server failed to route message to '{peer}': {reason}"
+            )
+        elif sender == peer:
+            # If sender is set, then the message was successfully
+            # routed to the peer, but they failed to decrypt it
+            self.log.warning(f"Session error reported by '{peer}': {reason}")
+            # Reset the session
+            await self._reset_peer_session(peer)
+        else:
+            # Inconsistency between the header and the payload - neither can be
+            # trusted. Note that under normal circumstances this message should
+            # not have been routed by the server at all
+            self.log.warning(
+                "NACK spoofing attempt detected clientside. Received NACK"
+                + f" from '{sender}' for message destined to '{peer}'"
+            )
+
+        if message.header.msg_id == CansMsgId.USER_MESSAGE:
+            # Only report user message delivery failures to the core
+            # application
+            await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_replenish_one_time_keys_req(
         self, message: CansMessage
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
-        one_time_keys_num = message.payload["count"]
+        count = message.payload["count"]
+        self.log.debug(
+            f"Received a request to replenish {count} one-time keys"
+        )
 
         # one time keys are right away marked as published
         one_time_keys = self.tdh_interface.get_one_time_keys(
-            number_of_keys=one_time_keys_num
+            number_of_keys=count
         )
         rep_otk_resp = ReplenishOneTimeKeysResp(one_time_keys=one_time_keys)
-        rep_otk_resp.sender = self.identity
         await self.send_message(rep_otk_resp)
 
     async def _handle_message_session_established(
@@ -389,16 +496,35 @@ class SessionManager:
         """Handle message type SESSION_ESTABLISHED."""
         peer = message.header.sender
         self.log.debug(
-            f"Handling message SESSION_ESTABLISHED from peer {peer}..."
+            f"Handling message SESSION_ESTABLISHED from '{peer}'..."
         )
         # Get pending messages
         pending_messages = self.session_sm.flush_pending_session(peer)
         # Mark session as active
         self.session_sm.mark_outbound_session_active(message)
 
+        count = 0
         # Send the pending messages
         for message in pending_messages:
             await self.send_message(message)
+            count += 1
+        self.log.debug(
+            f"Session with '{peer}' activated."
+            + f" Sent {count} buffered message(s)"
+        )
+
+    async def _handle_message_get_one_time_key_resp(
+        self, message: CansMessage
+    ) -> None:
+        """Handle message type GET_ONE_TIME_KEY_RESP."""
+        peer = message.payload["peer"]
+        identity_key, one_time_key = message.payload["public_keys_bundle"]
+        self.session_sm.add_potential_session(
+            peer=peer,
+            identity_key=identity_key,
+            one_time_key=one_time_key,
+        )
+        self.log.info(f"Restored potential session with '{peer}'")
 
     def _encrypt_message_payload(self, message: CansMessage) -> CansMessage:
         """Encrypt different parts of the payload depending on message ID."""
@@ -417,6 +543,12 @@ class SessionManager:
             message.payload["magic"] = self._encrypt_text(
                 receiver, message.payload["magic"]
             )
+        elif msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
+            # Send the message in plaintext
+            pass
+        elif msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
+            # Send the message in plaintext
+            pass
         else:
             self.log.error(
                 f"Attempted encryption of unsupported message: {msg_id}"

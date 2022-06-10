@@ -15,7 +15,12 @@ from client import Client
 from client.session_manager_client import SessionManager
 from common.connection import CansStatusCode
 from common.keys import EcPemKeyPair, digest_key, generate_keys
-from common.messages import CansMessage, CansMsgId, cans_send
+from common.messages import (
+    CansMessage,
+    CansMsgId,
+    NackMessageNotDelivered,
+    cans_send,
+)
 
 
 class MockSessionManager(SessionManager):
@@ -81,12 +86,16 @@ class MockClient(Client):
 
     def run(self) -> None:
         """Run dummy client application. Do not try handling exceptions."""
+        timeout = 10
         self.event_loop.run_until_complete(
-            self.session_manager.connect(
-                url=f"wss://{self.server_hostname}:{self.server_port}",
-                certpath=self.certpath,
-                friends=set(),
-            ),
+            asyncio.wait_for(
+                self.session_manager.connect(
+                    url=f"wss://{self.server_hostname}:{self.server_port}",
+                    certpath=self.certpath,
+                    friends=set(),
+                ),
+                timeout,
+            )
         )
 
 
@@ -249,17 +258,53 @@ def test_impersonation_attempt():
         self, conn: ws.WebSocketClientProtocol
     ) -> None:
         """Try impersonating another user."""
-        # Fill in the sender field with someone else's user ID
-        sender = digest_key(generate_keys()[1])
         message = CansMessage()
         message.header.receiver = None
-        message.header.sender = sender
+        # Fill in the sender field with someone else's user ID
+        message.header.sender = digest_key(generate_keys()[1])
         message.header.msg_id = CansMsgId.REQUEST_LOGOUT_NOTIF
         await cans_send(message, conn)
 
     # Instantiate a mock client which overrides the upstream handler
     alice = MockClient(
         keys=generate_keys(),
+        run_server_handshake_override=None,
+        handle_upstream_override=upstream_override,
+    )
+
+    # Expect connection dropped by the server
+    with pytest.raises(ConnectionClosed) as excinfo:
+        alice.run()
+    assert (
+        excinfo.value.code == CansStatusCode.MALFORMED_MESSAGE
+    ), "Invalid status code"
+
+
+def test_nack_spoofing_attempt():
+    """Test detection of a NACK spoofing attempt."""
+    # Define mock upstream handler which attempts impersonation
+    alice_secret, alice_public = generate_keys()
+
+    async def upstream_override(
+        self, conn: ws.WebSocketClientProtocol
+    ) -> None:
+        """Try impersonating another user using the NACK message."""
+        message = NackMessageNotDelivered(
+            # Set random receiver - server should validate the message
+            # before attempting any routing
+            receiver=digest_key(generate_keys()[1]),
+            # Set message target different than self
+            message_target=digest_key(generate_keys()[1]),
+            message_id=CansMsgId.PEER_HELLO,
+            extra="",
+            reason="The receiver does not like you anymore",
+        )
+        message.header.sender = digest_key(alice_public)
+        await cans_send(message, conn)
+
+    # Instantiate a mock client which overrides the upstream handler
+    alice = MockClient(
+        keys=(alice_secret, alice_public),
         run_server_handshake_override=None,
         handle_upstream_override=upstream_override,
     )

@@ -27,13 +27,14 @@ class CansMsgId(IntEnum):
     PEER_HELLO = auto()
     SHARE_CONTACTS = auto()
 
+    # Peer-to-peer delivery signaling
+    ACK_MESSAGE_DELIVERED = auto()
+    NACK_MESSAGE_NOT_DELIVERED = auto()
+
     # Client-server handshake
     SCHNORR_COMMIT = auto()
     SCHNORR_CHALLENGE = auto()
     SCHNORR_RESPONSE = auto()
-
-    SERVER_HELLO = auto()
-    ACTIVE_FRIENDS = auto()
 
     # Miscellaneous client-server API
     PEER_LOGIN = auto()
@@ -41,13 +42,13 @@ class CansMsgId(IntEnum):
     ADD_FRIEND = auto()
     REMOVE_FRIEND = auto()
     REQUEST_LOGOUT_NOTIF = auto()
-    ADD_BLACKLIST = auto()
-    REMOVE_BLACKLIST = auto()
+    ACTIVE_FRIENDS = auto()
     REPLENISH_ONE_TIME_KEYS_REQ = auto()
     REPLENISH_ONE_TIME_KEYS_RESP = auto()
-
-    ACK_MESSAGE_DELIVERED = auto()
-    NACK_MESSAGE_NOT_DELIVERED = auto()
+    GET_ONE_TIME_KEY_REQ = auto()
+    GET_ONE_TIME_KEY_RESP = auto()
+    ADD_BLACKLIST = auto()
+    REMOVE_BLACKLIST = auto()
 
 
 class CansMessage:
@@ -106,6 +107,42 @@ class SessionEstablished(CansMessage):
         self.payload = {"magic": CANS_PEER_HANDSHAKE_MAGIC}
 
 
+class AckMessageDelivered(CansMessage):
+    """Message delivery acknowledgement."""
+
+    def __init__(self, receiver: str, cookie: str) -> None:
+        """Create a delivery acknowledgement."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.ACK_MESSAGE_DELIVERED
+        self.header.receiver = receiver
+        self.payload = {
+            "cookie": cookie,
+        }
+
+
+class NackMessageNotDelivered(CansMessage):
+    """Message delivery failed notification."""
+
+    def __init__(
+        self,
+        receiver: str,
+        message_target: str,
+        message_id: CansMsgId,
+        extra: str,
+        reason: str,
+    ) -> None:
+        """Create a delivery failure notification."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.NACK_MESSAGE_NOT_DELIVERED
+        self.header.receiver = receiver
+        self.payload = {
+            "message_target": message_target,
+            "msg_id": message_id,
+            "extra": extra,
+            "reason": reason,
+        }
+
+
 class SchnorrCommit(CansMessage):
     """Commitment of the Schnorr identification scheme."""
 
@@ -113,7 +150,7 @@ class SchnorrCommit(CansMessage):
         """Create a Schnorr commitment message."""
         super().__init__()
         self.header.msg_id = CansMsgId.SCHNORR_COMMIT
-        self.header.receiver = ""
+        self.header.receiver = None
         self.payload = {
             "public_key": public_key,
             "commitment": commitment,
@@ -146,7 +183,7 @@ class SchnorrResponse(CansMessage):
         """Create a Schnorr response message."""
         super().__init__()
         self.header.msg_id = CansMsgId.SCHNORR_RESPONSE
-        self.header.receiver = ""
+        self.header.receiver = None
         self.payload = {
             "response": response,
             "subscriptions": list(subscriptions),
@@ -215,6 +252,75 @@ class RequestLogoutNotif(CansMessage):
         self.payload = {"peer": peer}
 
 
+class ActiveFriends(CansMessage):
+    """Notify the client during handshake who's online."""
+
+    def __init__(
+        self,
+        receiver: str,
+        active_friends: Dict[str, PublicKeysBundle],
+    ) -> None:
+        """Create an active friends notification."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.ACTIVE_FRIENDS
+        self.header.receiver = receiver
+        self.payload = {"friends": active_friends}
+
+
+class ReplenishOneTimeKeysReq(CansMessage):
+    """Request additional one-time keys from the client."""
+
+    def __init__(self, receiver: str, one_time_keys_num: int) -> None:
+        """Create a replenish request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ
+        self.header.sender = None
+        self.header.receiver = receiver
+        self.payload = {
+            "count": one_time_keys_num,
+        }
+
+
+class ReplenishOneTimeKeysResp(CansMessage):
+    """Replenish one-time keys."""
+
+    def __init__(self, one_time_keys: Dict[str, str]) -> None:
+        """Create a replenish response."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
+        self.header.receiver = None
+        self.payload = {
+            "keys": one_time_keys,
+        }
+
+
+class GetOneTimeKeyReq(CansMessage):
+    """Get another one-time key of a peer."""
+
+    def __init__(self, peer: str) -> None:
+        """Create a one-time key request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_ONE_TIME_KEY_REQ
+        self.header.receiver = None
+        self.payload = {"peer": peer}
+
+
+class GetOneTimeKeyResp(CansMessage):
+    """Allocate peer's one-time key for the client."""
+
+    def __init__(
+        self,
+        receiver: str,
+        peer: str,
+        public_keys_bundle: PublicKeysBundle,
+    ) -> None:
+        """Create a response to the one-time key request."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.GET_ONE_TIME_KEY_RESP
+        self.header.receiver = receiver
+        self.payload = {"peer": peer, "public_keys_bundle": public_keys_bundle}
+
+
 class AddBlacklist(CansMessage):
     """Blacklist users request."""
 
@@ -235,81 +341,6 @@ class RemoveBlacklist(CansMessage):
         self.header.msg_id = CansMsgId.REMOVE_BLACKLIST
         self.header.receiver = None
         self.payload = {"users": list(whitelist)}
-
-
-class ActiveFriends(CansMessage):
-    """Notify the client during handshake who's online."""
-
-    def __init__(
-        self,
-        receiver: str,
-        active_friends: Dict[str, PublicKeysBundle],
-    ) -> None:
-        """Create an active friends notification."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.ACTIVE_FRIENDS
-        self.header.receiver = receiver
-        self.payload = {"friends": active_friends}
-
-
-class ReplenishOneTimeKeysReq(CansMessage):
-    """Send replenish one time keys request to the client."""
-
-    def __init__(self, receiver: str, one_time_keys_num: int) -> None:
-        """Create a replenish request."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_REQ
-        self.header.sender = None
-        self.header.receiver = receiver
-        self.payload = {
-            "count": one_time_keys_num,
-        }
-
-
-class ReplenishOneTimeKeysResp(CansMessage):
-    """Send replenish one time keys response to the server."""
-
-    def __init__(self, one_time_keys: Dict[str, str]) -> None:
-        """Create replenish response."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP
-        self.header.receiver = None
-        self.payload = {
-            "keys": one_time_keys,
-        }
-
-
-class AckMessageDelivered(CansMessage):
-    """Message delivery acknowledgement."""
-
-    def __init__(
-        self, receiver: str, message_target: str, cookie: str
-    ) -> None:
-        """Create a delivery acknowledgement."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.ACK_MESSAGE_DELIVERED
-        self.header.receiver = receiver
-        self.payload = {
-            "target": message_target,
-            "cookie": cookie,
-        }
-
-
-class NackMessageNotDelivered(CansMessage):
-    """Message delivery failed notification."""
-
-    def __init__(
-        self, receiver: str, message_target: str, cookie: str, reason: str
-    ) -> None:
-        """Create a delivery failure notification."""
-        super().__init__()
-        self.header.msg_id = CansMsgId.NACK_MESSAGE_NOT_DELIVERED
-        self.header.receiver = receiver
-        self.payload = {
-            "target": message_target,
-            "cookie": cookie,
-            "reason": reason,
-        }
 
 
 class CansMessageException(Exception):

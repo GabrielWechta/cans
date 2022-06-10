@@ -9,11 +9,17 @@ from common.messages import (
     CansMessage,
     CansMessageException,
     CansMsgId,
+    GetOneTimeKeyResp,
     cans_recv,
 )
 from server.client_session import ClientSession
 from server.database_manager_server import DatabaseManager
-from server.session_event import LoginEvent, LogoutEvent, SessionEvent
+from server.session_event import (
+    LoginEvent,
+    LogoutEvent,
+    MessageEvent,
+    SessionEvent,
+)
 
 
 class SessionUpstreamHandler:
@@ -27,6 +33,7 @@ class SessionUpstreamHandler:
         self,
         sessions: Dict[str, ClientSession],
         route_message_callback: Callable,
+        get_key_bundle_callback: Callable,
         database_manager: DatabaseManager,
     ) -> None:
         """Construct the upstream handler."""
@@ -35,6 +42,8 @@ class SessionUpstreamHandler:
         self.sessions = sessions
         # Store a callback for routing messages between handlers
         self.route_message = route_message_callback
+        # Store a callback for fetching peers' public keys bundles
+        self.get_key_bundle = get_key_bundle_callback
         # Store a reference to the database manager
         self.database_manager = database_manager
         self.message_handlers = {
@@ -42,12 +51,19 @@ class SessionUpstreamHandler:
             CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
             CansMsgId.PEER_HELLO: self.__handle_message_peer_hello,
             CansMsgId.ADD_FRIEND: self.__handle_message_add_friend,
-            CansMsgId.REQUEST_LOGOUT_NOTIF: self.__handle_request_logout_notif,
             # fmt: off
+            CansMsgId.ACK_MESSAGE_DELIVERED:
+                self.__handle_message_ack_message_delivered,
+            CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
+                self.__handle_message_nack_message_not_delivered,
+            CansMsgId.REQUEST_LOGOUT_NOTIF:
+                self.__handle_message_request_logout_notif,
             CansMsgId.SESSION_ESTABLISHED:
                 self.__handle_message_session_established,
             CansMsgId.REPLENISH_ONE_TIME_KEYS_RESP:
-                self.__handle_message_replenish_one_time_keys_req,
+                self.__handle_message_replenish_one_time_keys_resp,
+            CansMsgId.GET_ONE_TIME_KEY_REQ:
+                self.__handle_message_get_one_time_key_req,
             # fmt: on
         }
 
@@ -117,7 +133,28 @@ class SessionUpstreamHandler:
             event = LoginEvent(peer)
             await self.__send_event(event, session)
 
-    async def __handle_request_logout_notif(
+    async def __handle_message_ack_message_delivered(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type ACK_MESSAGE_DELIVERED."""
+        # User traffic - just route it
+        await self.route_message(message)
+
+    async def __handle_message_nack_message_not_delivered(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type NACK_MESSAGE_NOT_DELIVERED."""
+        # User traffic - route it provided the payload is not malicious
+        sender = message.header.sender
+        message_target = message.payload["message_target"]
+        if message_target != sender:
+            raise CansMalformedMessageError(
+                f"NACK spoofing attempt: sender is '{sender}',"
+                + f" NACKed message target is '{message_target}'"
+            )
+        await self.route_message(message)
+
+    async def __handle_message_request_logout_notif(
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type REQUEST_LOGOUT_NOTIF."""
@@ -147,7 +184,7 @@ class SessionUpstreamHandler:
         # User traffic - just route it
         await self.route_message(message)
 
-    async def __handle_message_replenish_one_time_keys_req(
+    async def __handle_message_replenish_one_time_keys_resp(
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
@@ -159,6 +196,24 @@ class SessionUpstreamHandler:
         # TODO: Is any validation of the keys needed? This is authenticated
         # user and the keys are not used by the server, so likely not...
         session.add_one_time_keys(keys)
+
+    async def __handle_message_get_one_time_key_req(
+        self, message: CansMessage, session: ClientSession
+    ) -> None:
+        """Handle message type GET_ONE_TIME_KEY_REQ."""
+        peer = message.payload["peer"]
+
+        if peer in self.sessions.keys():
+            # If peer is offline do not send the response at all, the user
+            # must have already received PEER_LOGOUT.
+            response = GetOneTimeKeyResp(
+                receiver=message.header.sender,
+                peer=peer,
+                public_keys_bundle=await self.get_key_bundle(peer),
+            )
+            # Skip the routing, send the message directly
+            event = MessageEvent(response)
+            await self.__send_event(event, session)
 
     def __assert_valid_upstream_message(
         self, message: CansMessage, session: ClientSession

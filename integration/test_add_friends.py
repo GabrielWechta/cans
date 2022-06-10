@@ -55,13 +55,13 @@ class MockClient(Client):
     ) -> None:
         """Add friend and wait for PEER_LOGIN message."""
         self.log.debug(
-            f"{self.session_manager.identity} sending ADD_FRIEND"
-            + "message to the server..."
+            f"'{self.session_manager.identity}' sending ADD_FRIEND"
+            + " message to the server..."
         )
         await self.session_manager.add_friend(peer)
 
         self.log.debug(
-            f"{self.session_manager.identity} waiting for"
+            f"'{self.session_manager.identity}' waiting for"
             + f" notification about {peer}"
         )
 
@@ -71,7 +71,7 @@ class MockClient(Client):
             )
             self.log.debug(
                 f"Received message with id {message.header.msg_id}"
-                + f" and payload: {message.payload}"
+                + f" and payload: '{message.payload}'"
             )
             if (
                 message.header.msg_id == CansMsgId.PEER_LOGIN
