@@ -31,22 +31,17 @@ class DatabaseManager:
 
     async def get_subscribers_of(self, target: str) -> List[str]:
         """Fetch a list of subscribers."""
-        # TODO: Use the database
         try:
             user = User.get(User.key == target)
         except peewee.DoesNotExist:
             user = await self.add_user(target)
 
-        try:
-            subscriptions = [
-                row.subscriber_id
-                for row in Subscribtion.select().where(
-                    Subscribtion.subscribed == user
-                )
-            ]
-            return subscriptions  # type: ignore
-        except peewee.DoesNotExist:
-            return []
+        return [
+            row.subscriber_id
+            for row in Subscribtion.select().where(
+                Subscribtion.subscribed == user
+            )
+        ]
 
     async def add_user(self, key: str) -> Optional[User]:
         """Add user to user list."""
@@ -54,7 +49,8 @@ class DatabaseManager:
             user = User.create(
                 key=key,
             )
-        except peewee.IntegrityError:
+        except peewee.IntegrityError as e:
+            self.log.error(f"Database integrity error: {str(e)}")
             user = None
         return user
 
@@ -77,7 +73,8 @@ class DatabaseManager:
                 subscriber=subscriber_db,
                 subscribed=subscribed_db,
             )
-        except peewee.IntegrityError:
+        except peewee.IntegrityError as e:
+            self.log.error(f"Database integrity error: {str(e)}")
             subscription = None
 
         return subscription
