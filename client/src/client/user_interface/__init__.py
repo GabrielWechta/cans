@@ -497,7 +497,8 @@ class UserInterface:
                 tile = self.view.layout.current_tile
 
                 if tile and isinstance(tile, ChatTile) and input_text != "":
-                    input_text = input_text.strip()
+                    if isinstance(input_text, str):
+                        input_text = input_text.strip()
                     # handle buffer scroll
                     if input_text == self.term.KEY_UP:
                         tile.increment_offset()
@@ -534,6 +535,7 @@ class UserInterface:
                 elif isinstance(tile, PromptTile) and isinstance(
                     input_text, str
                 ):
+                    input_text = input_text.strip()
                     feedback = ""
                     # if validfation function is set, first validate input
                     if tile.input_validation:
@@ -548,7 +550,6 @@ class UserInterface:
 
                     # prompt tile handling
                     if tile == self.prompt_tile:
-                        input_text = input_text.strip()
 
                         await self.prompt_queue.put(input_text)
                         if feedback != "":
