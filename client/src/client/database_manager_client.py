@@ -62,7 +62,7 @@ class DatabaseManager:
                 try:
                     self.log.error(
                         f"Failed to save {friend.username} to the database, "
-                        + f"because {e.message}."
+                        + f"because {str(e)}."
                     )
                     return Friend.get(id=friend.id)
                 except peewee.DoesNotExist:
@@ -80,7 +80,7 @@ class DatabaseManager:
                 try:
                     self.log.error(
                         f"Failed to save {kwargs['username']} to the database,"
-                        + f" because {e1}."
+                        + f" because {str(e1)}."
                     )
                     return Friend.get(id=kwargs["id"])
                 except peewee.DoesNotExist:
@@ -129,7 +129,7 @@ class DatabaseManager:
             except peewee.IntegrityError as e:
                 self.log.error(
                     f"Failed to update {friend.username}'s data, because "
-                    + f"{e.message}."
+                    + f"{str(e)}."
                 )
                 return False
         elif kwargs and id:
@@ -138,7 +138,7 @@ class DatabaseManager:
             except peewee.IntegrityError as e1:
                 self.log.error(
                     f"Failed to update friend with {id} key, because "
-                    + f"{e1}."
+                    + f"{str(e1)}."
                 )
                 return False
 
@@ -160,7 +160,7 @@ class DatabaseManager:
                 return False
         except peewee.IntegrityError as e:
             self.log.error(
-                f"Failed to delete friend with {id} key, because {e}."
+                f"Failed to delete friend with {id} key, because {str(e)}."
             )
             return False
 
@@ -191,7 +191,7 @@ class DatabaseManager:
                 try:
                     self.log.error(
                         f"Unable to save message {message.id} to database, "
-                        + f"because {e}."
+                        + f"because {str(e)}."
                     )
                     return Message.get(id=message.id)
                 except peewee.DoesNotExist:
@@ -212,13 +212,13 @@ class DatabaseManager:
                     if "id" in kwargs:
                         self.log.error(
                             f"Unable to save message {kwargs['id']} to "
-                            + f"database, because {e1}."
+                            + f"database, because {str(e1)}."
                         )
                         return Message.get(id=kwargs["id"])
                     else:
                         self.log.error(
                             f"Unable to save {kwargs['body']} to database, "
-                            + f"because {e1.message}."
+                            + f"because {str(e1)}."
                         )
                         return None
                 except peewee.DoesNotExist:
@@ -285,7 +285,7 @@ class DatabaseManager:
             except peewee.IntegrityError as e:
                 self.log.error(
                     f"Failed to update message {message.id} in database, "
-                    + f"because {e}."
+                    + f"because {str(e)}."
                 )
                 return False
         elif id:
@@ -296,7 +296,7 @@ class DatabaseManager:
             except peewee.IntegrityError as e1:
                 self.log.error(
                     f"Failed to update message {id} in database, "
-                    + f"because {e1}."
+                    + f"because {str(e1)}."
                 )
                 return False
 
@@ -319,7 +319,7 @@ class DatabaseManager:
         except peewee.IntegrityError as e:
             self.log.error(
                 f"Failed to delete message {id} from database, "
-                + f"because {e}."
+                + f"because {str(e)}."
             )
             return False
 
@@ -350,7 +350,7 @@ class DatabaseManager:
         except peewee.IntegrityError as e:
             self.log.error(
                 f"Failed to delete message history with {id}, because "
-                + f"{e}."
+                + f"{str(e)}."
             )
             return False
 
@@ -362,7 +362,7 @@ class DatabaseManager:
             try:
                 self.log.error(
                     f"Unable to save setting {option} "
-                    + f"to {value} in the database, because {e}."
+                    + f"to {value} in the database, because {str(e)}."
                 )
                 return Setting.get_by_id(pk=option)
             except peewee.DoesNotExist:
@@ -399,7 +399,7 @@ class DatabaseManager:
         except peewee.IntegrityError as e:
             self.log.error(
                 f"Updating setting {option} in the database failed, "
-                + f"because {e}."
+                + f"because {str(e)}."
             )
             return False
 
@@ -418,6 +418,6 @@ class DatabaseManager:
         except peewee.IntegrityError as e:
             self.log.error(
                 f"Deleting setting {option} in the database failed, "
-                + f"because {e}."
+                + f"because {str(e)}."
             )
             return False
