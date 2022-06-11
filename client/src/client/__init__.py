@@ -15,6 +15,7 @@ from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
 from .startup import Startup
 from .user_interface import UserInterface
+from .user_interface.state_machines import StartupState
 
 
 class Client:
@@ -30,12 +31,38 @@ class Client:
         self.log = logging.getLogger("cans-logger")
         self.startup = Startup()
 
+        self.event_loop = asyncio.get_event_loop()
+        self.db_manager = DatabaseManager(
+            name=str(self.startup.db_path),
+        )
+
+        assert StartupState
+        # All of those callbacks should be in the form
+        # function(input: str) -> feedback: str
+        # they can be in a different form (like upstream message)
+        # but then they have to have custom implementation
+        self.ui = UserInterface(
+            loop=self.event_loop,
+            input_callbacks={
+                "upstream_message": self._handle_upstream_message,
+            },
+            db_manager=self.db_manager,
+            first_startup=self.startup.is_first_startup(),
+        )
+
         # TODO: Implement proper password prompts during startup
         # Check if necessary files exist
-        # TODO: if the key is decrypted without password,
-        # please call UI.complete_startup()
         if self.startup.is_first_startup():
-            user_passphrase = "SafeAndSecurePassword2137"
+            # Promt user for username, password etc in blocking mode
+            user_username, user_passphrase, user_color = self.ui.early_prompt()
+
+            # if anything needs to be changed, just do:
+            # user_username, _, _ = self.ui.early_prompt(
+            #                           state=StartupState.PROMPT_USERNAME,
+            #                           isolate_state=True,
+            #                           feedback="Error message here!")
+            #
+
             self.password = self.startup.get_key(user_passphrase)
             self.startup.cans_setup()
             self.startup.generate_private_key(self.password)
@@ -43,33 +70,60 @@ class Client:
                 self.password
             )
             self.account = self.startup.create_crypto_account(user_passphrase)
-        else:
-            user_passphrase = "SafeAndSecurePassword2137"
-            self.password = self.startup.get_key(user_passphrase)
-            self.priv_key, self.pub_key = self.startup.load_key_pair(
-                self.password
+
+            # init db manager
+            self.db_manager.open(passphrase=self.password)
+
+            # Initialize system and myself in the database
+            self.system = self.db_manager.add_friend(
+                Friend(
+                    id="system", username="System", color="orange_underline"
+                )
             )
-            self.account = self.startup.load_crypto_account(user_passphrase)
+            self.myself = self.db_manager.add_friend(
+                Friend(id="myself", username=user_username, color=user_color)
+            )
 
-        self.event_loop = asyncio.get_event_loop()
-        self.db_manager = DatabaseManager(
-            name=str(self.startup.db_path),
-            password=self.password,
-        )
-        self.db_manager.initialize()
+        # handle consecutive startups
+        else:
+            # TODO: this while loop
+            feedback = ""
 
-        # Initialize system and myself in the database
-        self.system = self.db_manager.add_friend(
-            Friend(id="system", username="System", color="orange_underline")
-        )
-        self.myself = self.db_manager.add_friend(
-            Friend(id="myself", username="Alice", color="blue")
-        )
-        assert self.myself
+            while True:
+                user_passphrase = self.ui.blocking_prompt(
+                    "password", feedback=feedback
+                )
 
+                self.password = self.startup.get_key(user_passphrase)
+                self.priv_key, self.pub_key = self.startup.load_key_pair(
+                    self.password
+                )
+                self.account = self.startup.load_crypto_account(
+                    user_passphrase
+                )
+
+                # init db manager
+                self.db_manager.open(passphrase=self.password)
+
+                # TODO: some error handling might be useful here
+                self.system = self.db_manager.get_friend(id="system")
+                self.myself = self.db_manager.get_friend(id="myself")
+
+                break
+
+        # forward system and myself to UI
+        assert self.myself and self.system
+        self.ui.set_identity_user(self.myself)
+        self.ui.set_system_user(self.system)
+
+        # tell ui all is fine~
+        self.ui.complete_startup()
+
+        # rest of init
         self.echo_peer_id = (
             "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
         )
+
         echo_client = self.db_manager.add_friend(
             username="Echo",
             id=self.echo_peer_id,
@@ -86,34 +140,6 @@ class Client:
 
         assert echo_client
         assert eve_client
-
-        # All of those callbacks should be in the form
-        # function(input: str) -> feedback: str
-        # they can be in a different form (like upstream message)
-        # but then they have to have custom implementation
-        self.ui = UserInterface(
-            loop=self.event_loop,
-            # TODO @Karolina: replace all of those lambdas this with real
-            # callbacks
-            input_callbacks={
-                "upstream_message": self._handle_upstream_message,
-                "decrypt_key": lambda x: ""
-                if self.log.debug("Startup password: " + x)  # type: ignore
-                else "",
-                "set_identity_username": lambda x: ""
-                if self.log.debug("Identity username: " + x)  # type: ignore
-                else "",
-                "set_identity_color": lambda x: ""
-                if self.log.debug("Identity color: " + x)  # type: ignore
-                else "",
-                "set_password": lambda x: ""
-                if self.log.debug("User password: " + x)  # type: ignore
-                else "",
-            },
-            identity=self.myself,
-            db_manager=self.db_manager,
-            first_startup=self.startup.is_first_startup(),
-        )
 
         # self.ui.view.add_chat(echo_client)
         self.session_manager = SessionManager(
