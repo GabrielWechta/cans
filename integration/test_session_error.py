@@ -75,7 +75,6 @@ class MockClient(Client):
 
     def __init__(
         self,
-        name: str,
         keys: EcPemKeyPair,
         friends: Set,
         crypto_session_peer_override: Optional[str] = None,
@@ -86,7 +85,6 @@ class MockClient(Client):
         self.certpath = os.environ["CANS_SELF_SIGNED_CERT_PATH"]
         self.event_loop = asyncio.get_event_loop()
         self._do_logger_config()
-        self.name = name
 
         self.log = logging.getLogger("cans-logger")
         self.log.setLevel(logging.DEBUG)
@@ -128,19 +126,16 @@ async def impl_test_bad_message_format():
 
     # Instantiate three parties and let them all be friends with each other
     alice = MockClient(
-        name="Alice",
         keys=(alice_secret, alice_public),
         friends={digest_key(bob_public), digest_key(mallory_public)},
         crypto_session_peer_override=None,
     )
     bob = MockClient(
-        name="Bob",
         keys=(bob_secret, bob_public),
         friends={digest_key(alice_public), digest_key(mallory_public)},
         crypto_session_peer_override=None,
     )
     mallory = MockClient(
-        name="Charlie",
         keys=(mallory_secret, mallory_public),
         friends={digest_key(alice_public), digest_key(bob_public)},
         # Let Mallory be the broken client that always uses his session
