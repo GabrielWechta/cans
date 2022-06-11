@@ -21,19 +21,18 @@ class DatabaseManager:
         """Construct the clientside database manager."""
         self.log = logging.getLogger("cans-logger")
         self._db_name = str(name)
-        self._db_pass = password
 
-    def initialize(self) -> Optional[str]:
+    def open(self, passphrase: str = "") -> Optional[str]:
         """Set up the connection with application's database."""
-        self.db = SqlCipherDatabase(self._db_name, passphrase=self._db_pass)
+        self.db = SqlCipherDatabase(self._db_name, passphrase=passphrase)
         try:
+            db_proxy.initialize(self.db)
             self.db.create_tables([Friend, Message, Setting])
         except peewee.DatabaseError as e:
-            if e.message == "file is encrypted or is not a database":
+            if str(e) == "file is encrypted or is not a database":
                 return "Wrong password"
             else:
-                return str(e.message)
-        db_proxy.initialize(self.db)
+                return str(e)
         self.log.debug("Successfully initialized database connection.")
         return None
 
