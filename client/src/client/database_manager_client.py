@@ -29,7 +29,7 @@ class DatabaseManager:
             db_proxy.initialize(self.db)
             self.db.create_tables([Friend, Message, Setting])
         except peewee.DatabaseError as e:
-            if str(e) == "file is encrypted or is not a database":
+            if str(e) == "file is not a database":
                 return "Wrong password"
             else:
                 return str(e)

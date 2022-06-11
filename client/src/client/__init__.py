@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 from blessed import Terminal
+from olm import OlmAccountError
 
 from common.messages import CansMsgId
 
@@ -115,19 +116,37 @@ class Client:
                     assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
-                self.priv_key, self.pub_key = self.startup.load_key_pair(
-                    self.password
-                )
-                self.account = self.startup.load_crypto_account(
-                    user_passphrase
-                )
 
                 # init db manager
-                self.db_manager.open(passphrase=self.password)
+                error: str | None = self.db_manager.open(
+                    passphrase=self.password
+                )
+
+                if error is not None and error == "Wrong password":
+                    feedback = error
+                    continue
 
                 # TODO: some error handling might be useful here
                 self.system = self.db_manager.get_friend(id="system")
                 self.myself = self.db_manager.get_friend(id="myself")
+
+                try:
+                    self.priv_key, self.pub_key = self.startup.load_key_pair(
+                        self.password
+                    )
+                except ValueError:
+                    # Corrupted keys
+                    # TODO Figure out graceful shutdown
+                    os._exit(status=1)
+
+                try:
+                    self.account = self.startup.load_crypto_account(
+                        user_passphrase
+                    )
+                except OlmAccountError as e:
+                    self.log.critical(f"Corrupted OlmAccount: {str(e)}")
+                    # TODO Figure out graceful shutdown
+                    os._exit(status=1)
 
                 break
 
