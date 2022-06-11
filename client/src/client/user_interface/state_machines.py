@@ -51,8 +51,8 @@ class StartupState(Enum):
     """Define input states during startup phase."""
 
     PROMPT_USERNAME = auto()
-    PROMPT_COLOR = auto()
     PROMPT_PASSWORD = auto()
+    PROMPT_COLOR = auto()
 
 
 if __name__ == "__main__":
