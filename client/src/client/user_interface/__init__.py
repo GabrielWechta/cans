@@ -122,7 +122,7 @@ class UserInterface:
                 " - [Optional] Set password",
                 prompt="If you want to have additional protection, input a "
                 "password for your account. Password cannot contain any "
-                "whitespace characters and if provided it should be at  "
+                "whitespace characters and if provided it should be at "
                 "least 6 characters long.",
                 validation=self.validate_password,
             ),

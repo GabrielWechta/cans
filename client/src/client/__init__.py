@@ -37,10 +37,7 @@ class Client:
         )
 
         assert StartupState
-        # All of those callbacks should be in the form
-        # function(input: str) -> feedback: str
-        # they can be in a different form (like upstream message)
-        # but then they have to have custom implementation
+
         self.ui = UserInterface(
             loop=self.event_loop,
             input_callbacks={
@@ -50,7 +47,6 @@ class Client:
             first_startup=self.startup.is_first_startup(),
         )
 
-        # TODO: Implement proper password prompts during startup
         # Check if necessary files exist
         if self.startup.is_first_startup():
             # Promt user for username, password etc in blocking mode
