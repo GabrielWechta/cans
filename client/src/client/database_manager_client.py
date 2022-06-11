@@ -36,6 +36,11 @@ class DatabaseManager:
         self.log.debug("Successfully initialized database connection.")
         return None
 
+    def close(self) -> None:
+        """Close the database."""
+        if hasattr(self, "db"):
+            self.db.close()
+
     def add_friend(
         self,
         friend: Friend = None,

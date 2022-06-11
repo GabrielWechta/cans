@@ -42,6 +42,7 @@ class Client:
             loop=self.event_loop,
             input_callbacks={
                 "upstream_message": self._handle_upstream_message,
+                "graceful_shutdown": self._do_graceful_shutdown,
             },
             db_manager=self.db_manager,
             first_startup=self.startup.is_first_startup(),
@@ -163,8 +164,7 @@ class Client:
             self.log.critical(
                 f"Fatal exception ({type(e).__name__}): {str(e)}"
             )
-            # TODO: Handle the exception gracefully at UI level and shut down
-            # the application
+            self.event_loop.run_until_complete(self._do_graceful_shutdown())
 
     async def _handle_downstream_user_traffic(self) -> None:
         """Handle downstream user messages."""
@@ -234,6 +234,18 @@ class Client:
         )
 
         await self.session_manager.send_message(message)
+
+    async def _do_graceful_shutdown(self) -> None:
+        """Shut down the application gracefully."""
+        self.log.info("Shutting the blinds...")
+        if hasattr(self, "session_manager"):
+            await self.session_manager.shutdown()
+        self.log.info("Locking the door...")
+        if hasattr(self, "db_manager"):
+            self.db_manager.close()
+        self.log.info("Hanging the 'closed' sign in the window...")
+        self.ui.shutdown()
+        os._exit(0)
 
     def _do_logger_config(self) -> None:
         """Initialize the logger."""

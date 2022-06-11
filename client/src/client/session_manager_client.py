@@ -91,19 +91,24 @@ class SessionManager:
 
         self.log.debug(f"Connecting to the server at {url}...")
 
-        async with ws.connect(url, ssl=ssl_context) as conn:
+        async with ws.connect(url, ssl=ssl_context) as self.conn:
             self.log.debug(
                 "Successfully connected to the server. Running handshake..."
             )
-            await self._run_server_handshake(conn, friends)
+            await self._run_server_handshake(self.conn, friends)
             self.log.debug(
                 "Handshake complete. Forking to handle"
                 + " upstream and downstream concurrently..."
             )
             await asyncio.gather(
-                self._handle_upstream(conn),
-                self._handle_downstream(conn),
+                self._handle_upstream(self.conn),
+                self._handle_downstream(self.conn),
             )
+
+    async def shutdown(self) -> None:
+        """Shut down the session manager."""
+        if hasattr(self, "conn"):
+            await self.conn.close()
 
     async def send_message(self, message: CansMessage) -> None:
         """Send an outgoing message."""

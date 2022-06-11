@@ -85,6 +85,10 @@ class MockClient(Client):
             "Mock control downstream handler called at client level"
         )
 
+    async def _do_graceful_shutdown(self) -> None:
+        """Do NOT do graceful shutdown."""
+        pass
+
 
 def test_connection_dropped():
     """Test server's behaviour on connection dropped."""
