@@ -4,9 +4,7 @@ import logging
 from typing import Any, Callable, Dict
 
 from common.messages import (
-    AckMessageDelivered,
     CansMessage,
-    CansMsgId,
     PeerLogin,
     PeerLogout,
     ReplenishOneTimeKeysReq,
@@ -14,7 +12,7 @@ from common.messages import (
 )
 from server.client_session import ClientSession
 
-from .session_event import EventType, MessageEvent, SessionEvent
+from .session_event import EventType, SessionEvent
 
 
 class SessionDownstreamHandler:
@@ -27,14 +25,14 @@ class SessionDownstreamHandler:
     def __init__(
         self,
         sessions: Dict[str, ClientSession],
-        get_one_time_key_callback: Callable,
+        get_key_bundle_callback: Callable,
     ) -> None:
         """Construct the downstream handler."""
         self.log = logging.getLogger("cans-logger")
         # Store a reference to the managed sessions
         self.sessions = sessions
-        # Store a reference to the get key callback
-        self.get_one_time_key = get_one_time_key_callback
+        # Store a callback for fetching peers' public keys bundles
+        self.get_key_bundle = get_key_bundle_callback
         # Set up event handlers
         self.event_handlers = {
             EventType.MESSAGE: self.__handle_event_message,
@@ -75,23 +73,6 @@ class SessionDownstreamHandler:
         # Forward the user message downstream to the client
         await cans_send(message, session.connection)
 
-        # Acknowledge user messages
-        if message.header.msg_id == CansMsgId.USER_MESSAGE:
-            await self.__ack_user_message(message)
-
-    async def __ack_user_message(self, message: CansMessage) -> None:
-        """Send delivery acknowledgement back to sender."""
-        sender = message.header.sender
-
-        ack_message = AckMessageDelivered(
-            receiver=sender,
-            message_target=message.header.receiver,
-            cookie=message.payload["cookie"],
-        )
-
-        event = MessageEvent(ack_message)
-        await self.send_event(event, sender)
-
     async def __handle_event_login(
         self, event: SessionEvent, session: ClientSession
     ) -> None:
@@ -99,15 +80,11 @@ class SessionDownstreamHandler:
         assert isinstance(event.payload, dict)
         payload: Dict[str, Any] = event.payload
         peer = payload["peer"]
-        peer_key_bundle = (
-            self.sessions[peer].identity_key,
-            await self.get_one_time_key(peer),
-        )
         # Wrap the event in a CANS message and send downstream to the client
         message = PeerLogin(
             receiver=session.user_id,
             peer=peer,
-            public_keys_bundle=peer_key_bundle,
+            public_keys_bundle=await self.get_key_bundle(peer),
         )
         await cans_send(message, session.connection)
 

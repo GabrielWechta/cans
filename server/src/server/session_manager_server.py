@@ -49,11 +49,12 @@ class SessionManager:
 
         # Instantiate the traffic handlers
         self.downstream_handler = SessionDownstreamHandler(
-            self.sessions, self.__get_one_time_key
+            self.sessions, self.__get_key_bundle
         )
         self.upstream_handler = SessionUpstreamHandler(
             sessions=self.sessions,
             route_message_callback=self.__route_message,
+            get_key_bundle_callback=self.__get_key_bundle,
             database_manager=self.database_manager,
         )
 
@@ -112,7 +113,13 @@ class SessionManager:
             notification = NackMessageNotDelivered(
                 receiver=sender,
                 message_target=receiver,
-                cookie=message.payload["cookie"],
+                message_id=message.header.msg_id,
+                # Note that cookie may not be present as no payload validation
+                # is done serverside and the message need not be USER_MESSAGE,
+                # but may also be, e.g. PEER_HELLO
+                extra=message.payload["cookie"]
+                if "cookie" in message.payload.keys()
+                else "",
                 reason="Peer unavailable",
             )
             self.log.debug(
@@ -128,11 +135,11 @@ class SessionManager:
                 + f" destined to {message.header.receiver}"
             )
 
-    async def __get_one_time_key(self, client: str) -> str:
-        """Pop peer's one-time key and request replenishment."""
+    async def __get_key_bundle(self, client: str) -> PublicKeysBundle:
+        """Fetch peer's public keys bundle."""
         session = self.sessions[client]
         # TODO: Properly handle a race condition when no keys are available
-        key = session.pop_one_time_key()
+        one_time_key = session.pop_one_time_key()
 
         self.log.debug(f"Popping one-time key of user '{session.user_id}'...")
 
@@ -146,7 +153,8 @@ class SessionManager:
                 self.MAX_ONE_TIME_KEYS - session.remaining_keys()
             )
             await self.downstream_handler.send_event(event, client)
-        return key
+
+        return session.identity_key, one_time_key
 
     async def __handle_active_friends_notification(
         self, session: ClientSession
@@ -156,10 +164,7 @@ class SessionManager:
         active_friends: Dict[str, PublicKeysBundle] = {}
         for friend in session.subscriptions:
             if friend in self.sessions.keys():
-                active_friends[friend] = (
-                    self.sessions[friend].identity_key,
-                    await self.__get_one_time_key(friend),
-                )
+                active_friends[friend] = await self.__get_key_bundle(friend)
 
         active_friends_notification = ActiveFriends(
             session.user_id, active_friends

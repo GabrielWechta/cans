@@ -52,7 +52,7 @@ class OneTimeSessionManager(SessionManager):
     ) -> None:
         """Handle a single downstream message."""
         message = await cans_recv(conn)
-        await self._handle_incoming_message(conn, message)
+        await self._handle_incoming_message(message)
 
 
 class MockClient(Client):
