@@ -30,7 +30,6 @@ class View:
         self,
         term: Terminal,
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
-        identity: Friend,
         db_manager: DatabaseManager,
     ) -> None:
         """Instantiate a view."""
@@ -43,7 +42,7 @@ class View:
         self.on_resize_event = Event()
 
         # set identity
-        self.myself = identity
+        self.myself = Friend()
 
         # create a header tile -- always on top
         header = HeaderTile(
@@ -99,6 +98,10 @@ class View:
         # render the screen
         loop.run_until_complete(self.render_all())
 
+    def set_identity_user(self, identity: Friend) -> None:
+        """Set given Friend as myself."""
+        self.myself = identity
+
     def get_message_history(self, user: Friend) -> List[Message]:
         """Get message history for a given user."""
         messages = self.db_manager.get_message_history_with_friend(user.id)
@@ -126,7 +129,7 @@ class View:
         await (self.footer.render(self.term))
 
     async def run_in_thread(self, task: Callable, *args: Any) -> None:
-        """Run funntion in another thread."""
+        """Run function in another thread."""
         # Run in a custom thread pool:
         pool = concurrent.futures.ThreadPoolExecutor()
         await self.loop.run_in_executor(pool, task, *args)  # noqa: FKA01
