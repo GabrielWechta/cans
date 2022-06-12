@@ -8,6 +8,7 @@ from datetime import datetime
 
 from blessed import Terminal
 from olm import OlmAccountError
+from peewee import DatabaseError
 
 from common.messages import CansMsgId
 
@@ -99,6 +100,7 @@ class Client:
         else:
             # TODO: this while loop
             feedback = ""
+            retries = 3
 
             while True:
                 user_passphrase = self.ui.blocking_prompt(
@@ -117,34 +119,42 @@ class Client:
 
                 self.password = self.startup.get_key(user_passphrase)
 
-                # init db manager
-                error: str | None = self.db_manager.open(
-                    passphrase=self.password
-                )
-
-                if error is not None and error == "Wrong password":
-                    feedback = error
-                    continue
-
-                # TODO: some error handling might be useful here
-                self.system = self.db_manager.get_friend(id="system")
-                self.myself = self.db_manager.get_friend(id="myself")
-
                 try:
                     self.priv_key, self.pub_key = self.startup.load_key_pair(
                         self.password
                     )
-                except ValueError:
-                    # Corrupted keys
-                    self._do_graceful_shutdown()
 
-                try:
+                    # init db manager
+                    self.db_manager.open(passphrase=self.password)
+
+                    self.system = self.db_manager.get_friend(id="system")
+                    self.myself = self.db_manager.get_friend(id="myself")
+
                     self.account = self.startup.load_crypto_account(
                         user_passphrase
                     )
-                except OlmAccountError as e:
-                    self.log.critical(f"Corrupted OlmAccount: {str(e)}")
-                    self._do_graceful_shutdown()
+
+                except ValueError as e:
+                    # Corrupted keys or wrong password
+                    if retries > 0:
+                        retries = retries - 1
+                        feedback = "Wrong password."
+                        continue
+                    else:
+                        self.log.critical(f"Can't decrypt keys: {e}")
+                        self.event_loop.run_until_complete(
+                            self._do_graceful_shutdown()
+                        )
+                except DatabaseError as e1:
+                    self.log.critical(f"Database Error: {e1}")
+                    self.event_loop.run_until_complete(
+                        self._do_graceful_shutdown()
+                    )
+                except OlmAccountError as e2:
+                    self.log.critical(f"Corrupted OlmAccount: {e2}")
+                    self.event_loop.run_until_complete(
+                        self._do_graceful_shutdown()
+                    )
 
                 break
 
@@ -287,6 +297,7 @@ class Client:
             self.db_manager.close()
         self.log.info("Hanging the 'closed' sign in the window...")
         self.ui.shutdown()
+        self.log.info("Bye, bye...")
         os._exit(0)
 
     def _do_logger_config(self) -> None:

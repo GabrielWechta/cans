@@ -141,17 +141,9 @@ class Startup:
 
         Regenerate keys if private key is corrupted. Return both keys.
         """
-        pub_key = ""
-        priv_key = ""
-
-        try:
-            # Check if padding is correct
-            priv_key = self._decrypt_private_key(password)
-            # Check it's a valid EC key
-            get_private_key_from_pem(priv_key)
-        except ValueError as e:
-            self.log.critical(f"Corrupted EC key: {str(e)}")
-            raise e
+        priv_key = self._decrypt_private_key(password)
+        # Check it's a valid EC key
+        get_private_key_from_pem(priv_key)
         pub_key = get_public_key_pem(priv_key)
 
         return priv_key, pub_key
