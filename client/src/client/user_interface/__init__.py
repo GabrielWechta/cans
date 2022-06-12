@@ -12,7 +12,7 @@ from blessed.formatters import FormattingString
 from ..database_manager_client import DatabaseManager
 from ..models import CansMessageState, Friend, Message
 from .input import InputMode
-from .state_machines import StartupState, StateMachine
+from .state_machines import PasswordRecoveryState, StartupState, StateMachine
 from .tiles import ChatTile, PromptTile, Tile
 from .view import View
 
@@ -123,19 +123,30 @@ class UserInterface:
                 "least 6 characters long.",
                 validation=self.validate_password,
             ),
-            "show_mnemonics": InputState(
-                title=f"Startup [{StartupState.PROMPT_PASSWORD.value}]"
+            PasswordRecoveryState.PROMPT_MNEMONIC: InputState(
+                title=f"Recovery {PasswordRecoveryState.PROMPT_MNEMONIC.value}"
+                " - Input one time password",
+                prompt=f"It seems you've {self.term.bold('forgotten')} "
+                "your password. To recover your key, please input one of the "
+                f"{self.term.green('one time passwords')} that were "
+                "generated during registration.",
+                validation=self.validate_mnemonic,
+            ),
+            PasswordRecoveryState.PROMPT_NEW_PASSWORD: InputState(
+                title=f"Recovery "
+                f"[{PasswordRecoveryState.PROMPT_NEW_PASSWORD.value}]"
                 " - [Optional] Set password",
                 prompt="If you want to have additional protection, input a "
                 "password for your account. Password cannot contain any "
                 "whitespace characters and if provided it should be at "
-                "least 6 characters long.",
+                "least 6 characters long. Please try to remember it this "
+                " time.",
                 validation=self.validate_password,
             ),
             "password": InputState(
                 title="Input password",
                 prompt="Please input your password."
-                "Input '/' to enter password recovery mode.",
+                "Input '~' to enter password recovery mode.",
                 validation=self.validate_password,
             ),
         }
@@ -178,10 +189,15 @@ class UserInterface:
 
     def validate_password(self, password: str) -> bool:
         """Validate if given password is valid."""
-        if password == "":
+        if password == "" or password == "~":
             return True
         password_without_whitespace = "".join(password.split())
         return password == password_without_whitespace and len(password) >= 6
+
+    def validate_mnemonic(self, password: str) -> bool:
+        """Validate if given one time password is valid."""
+        password_without_whitespace = "".join(password.split())
+        return password == password_without_whitespace and len(password) == 10
 
     def validate_username(self, username: str) -> bool:
         """Validate if given username is valid."""
@@ -391,7 +407,9 @@ class UserInterface:
         self.loop.run_until_complete(self.view.render_all())
 
     def blocking_prompt(
-        self, prompt_state: Union[StartupState, str], feedback: str = ""
+        self,
+        prompt_state: Union[PasswordRecoveryState, StartupState, str],
+        feedback: str = "",
     ) -> str:
         """Prompt user in blocking mode.
 
@@ -415,22 +433,17 @@ class UserInterface:
         """Create a queue inside event loop."""
         self.prompt_queue: asyncio.Queue = asyncio.Queue()
 
-    def early_prompt(
+    def _early_prompt(
         self,
-        state: StartupState = StartupState.PROMPT_USERNAME,
+        state_machine: StateMachine,
         feedback: str = "",
         isolate_state: bool = False,
-    ) -> Config:
-        """Prompt user before Client finishes init.
+    ) -> List[str]:
+        """Inner function used for multi-stage inputs."""
+        output = [""] * len(list(state_machine.type))
 
-        Runs its own event loop. You can invoke it from any state you want.
-        If state is specified, it will run ALL states after selected state,
-        unless isolate_state is true.
-        """
-        state_machine = StateMachine(StartupState, state=state.value - 1)
-        config = ["" for x in list(StartupState)]
-        for i in list(StartupState)[state.value - 1 :]:  # noqa: E203
-            i_as_int = i.value - 1
+        while True:
+            i = state_machine.state.value - 1
 
             # Generate prompt window
             self.set_prompt_tile(state=state_machine.state)
@@ -447,14 +460,38 @@ class UserInterface:
             # wait for user input
             user_input = self.loop.run_until_complete(self.prompt_queue.get())
 
-            config[i_as_int] = user_input
+            output[i] = user_input
 
-            state_machine.next()
-            if isolate_state:
+            if isolate_state or state_machine.is_last:
                 break
+            state_machine.next()
+
+        return output
+
+    def early_prompt_startup(
+        self,
+        state: StartupState = StartupState.PROMPT_USERNAME,
+        feedback: str = "",
+        isolate_state: bool = False,
+    ) -> Config:
+        """Prompt user before Client finishes init.
+
+        Runs its own event loop. You can invoke it from any state you want.
+        If state is specified, it will run ALL states after selected state,
+        unless isolate_state is true.
+        """
+        state_machine = StateMachine(StartupState, state=state.value - 1)
+        config = self._early_prompt(
+            state_machine=state_machine,
+            feedback=feedback,
+            isolate_state=isolate_state,
+        )
+
         return Config(*config)
 
-    def set_prompt_tile(self, state: Union[StartupState, str]) -> None:
+    def set_prompt_tile(
+        self, state: Union[PasswordRecoveryState, StartupState, str]
+    ) -> None:
         """Create and set a vaild PromptTile as self.prompt_tile.
 
         Based on prompt state.

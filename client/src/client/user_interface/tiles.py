@@ -417,6 +417,7 @@ class InputTile(Tile):
                     next = term.inkey(timeout=0.010)
 
                 # set cursor position
+                # TODO: refactor all of those to use term.move_left
                 run_coroutine_threadsafe(
                     self.print_threadsafe(
                         term.move_xy(
@@ -493,16 +494,10 @@ class InputTile(Tile):
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ):
+                        ) and input_text != "":
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0]
-                                        + term.length(input_text),
-                                        prompt_location[1],
-                                    ),
-                                ),
+                                self.print_threadsafe(term.move_left),
                                 loop,
                             )
                         elif self.input_filter(val):
@@ -601,17 +596,10 @@ class InputTile(Tile):
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ):
+                        ) and input_text != "":
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0]
-                                        + term.length(input_text)
-                                        + 1,
-                                        prompt_location[1],
-                                    ),
-                                ),
+                                self.print_threadsafe(term.move_left),
                                 loop,
                             )
                         elif self.input_filter(val):
