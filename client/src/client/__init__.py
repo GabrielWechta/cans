@@ -81,6 +81,15 @@ class Client:
                 Friend(id="myself", username=user_username, color=user_color)
             )
 
+            mnemonics = [
+                "daklnrvjkn13",
+                "daklnrvjkn13",
+                "daklnrvjkn13",
+                "daklnrvjkn13",
+                "daklnrvjkn13",
+            ]
+            self.ui.show_mnemonics(mnemonics)
+
         # handle consecutive startups
         else:
             # TODO: this while loop

@@ -5,6 +5,7 @@ from datetime import datetime
 from random import choice
 from typing import Any, Callable, List, Mapping, Optional, Union
 
+import pyperclip
 from blessed import Terminal
 from blessed.formatters import FormattingString
 
@@ -15,7 +16,7 @@ from .state_machines import StartupState, StateMachine
 from .tiles import ChatTile, PromptTile, Tile
 from .view import View
 
-InputState = namedtuple("InputState", "callback_name title prompt validation")
+InputState = namedtuple("InputState", "title prompt validation")
 Config = namedtuple("Config", "username passphrase color")
 
 
@@ -98,7 +99,6 @@ class UserInterface:
 
         self.prompt_switches = {
             StartupState.PROMPT_USERNAME: InputState(
-                callback_name="set_identity_username",
                 title=f"Startup {StartupState.PROMPT_USERNAME.value}"
                 " - Set username",
                 prompt=f"Welcome to {self.term.red_bold_underline('cans')}! "
@@ -108,7 +108,6 @@ class UserInterface:
                 validation=self.validate_username,
             ),
             StartupState.PROMPT_COLOR: InputState(
-                callback_name="set_identity_color",
                 title=f"Startup {StartupState.PROMPT_COLOR.value} - Set color",
                 prompt="Please input the color you want to "
                 "use for your username, "
@@ -116,7 +115,15 @@ class UserInterface:
                 validation=self.validate_color,
             ),
             StartupState.PROMPT_PASSWORD: InputState(
-                callback_name="set_password",
+                title=f"Startup [{StartupState.PROMPT_PASSWORD.value}]"
+                " - [Optional] Set password",
+                prompt="If you want to have additional protection, input a "
+                "password for your account. Password cannot contain any "
+                "whitespace characters and if provided it should be at "
+                "least 6 characters long.",
+                validation=self.validate_password,
+            ),
+            "show_mnemonics": InputState(
                 title=f"Startup [{StartupState.PROMPT_PASSWORD.value}]"
                 " - [Optional] Set password",
                 prompt="If you want to have additional protection, input a "
@@ -126,14 +133,13 @@ class UserInterface:
                 validation=self.validate_password,
             ),
             "password": InputState(
-                callback_name="set_password",
                 title="Input password",
                 prompt="Please input your password."
                 "Input '/' to enter password recovery mode.",
                 validation=self.validate_password,
             ),
         }
-        """Prompt states in from (callback_name, tile, prompt, validation)"""
+        """Prompt states in from (title, prompt, validation)"""
 
         self.last_closed_tile: List[Tile] = []
 
@@ -324,6 +330,49 @@ class UserInterface:
         else:
             return True
 
+    def display_message(self, message: str, severity: str = "") -> None:
+        """Display a message in a separate tile.
+
+        Severity can be '' for normal and 'error' for error
+        messages.
+        """
+        if severity == "error":
+            title = self.term.red("Error message")
+            color = "red_underline"
+        else:
+            title = "System message"
+            color = "purple_bold"
+
+        message_prompt = PromptTile(
+            prompt_text=message,
+            title=title,
+            input_validation_function=None,
+            border_color=color,
+        )
+
+        self.view.layout.add(message_prompt)
+        self.loop.run_until_complete(self.view.render_all())
+
+    def show_mnemonics(self, mnemonics: List[str]) -> None:
+        """Show a generated list of one-time passwords.
+
+        Those one-time password are later used in password recovery
+        """
+        message = (
+            "Those are your one-time passwords, that you can use to "
+            "recover your key if you forget your password. \n"
+            + self.term.red_bold(
+                "KEEP THEM SAFE AS THIS IS YOUR ONLY WAY TO RECOVER KEY!"
+            )
+            + "\n\n"
+        )
+
+        message += self.term.bold("\n".join(mnemonics))
+        pyperclip.copy("\n".join(mnemonics))
+        message += "\n\n" + self.term.green_underline("Copied to clipboard.")
+
+        self.display_message(message)
+
     def complete_startup(self) -> None:
         """Close the startup tile and allow for normal mode of operation."""
         self.view.layout.remove(self.prompt_tile)  # type: ignore
@@ -414,7 +463,7 @@ class UserInterface:
 
         assert isinstance(case, InputState)
 
-        if not self.prompt_tile or self.prompt_tile.title != case[1]:
+        if not self.prompt_tile or self.prompt_tile.title != case.title:
             new_prompt = self.view.add_startup_tile(
                 prompt_text=case.prompt,
                 title=case.title,
