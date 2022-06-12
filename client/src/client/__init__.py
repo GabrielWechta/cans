@@ -136,8 +136,7 @@ class Client:
                     )
                 except ValueError:
                     # Corrupted keys
-                    # TODO Figure out graceful shutdown
-                    os._exit(status=1)
+                    self._do_graceful_shutdown()
 
                 try:
                     self.account = self.startup.load_crypto_account(
@@ -145,8 +144,7 @@ class Client:
                     )
                 except OlmAccountError as e:
                     self.log.critical(f"Corrupted OlmAccount: {str(e)}")
-                    # TODO Figure out graceful shutdown
-                    os._exit(status=1)
+                    self._do_graceful_shutdown()
 
                 break
 
@@ -248,8 +246,10 @@ class Client:
                     payload, message.payload["peer"]
                 )
             elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
-                # TODO: Handle delivery acknowledge
-                pass
+                self.db_manager.update_message(
+                    id=message.payload["cookie"],
+                    state=CansMessageState.DELIVERED,
+                )
             elif message.header.msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
                 payload = Terminal().silver("User is unavailable")
                 self.ui.on_system_message_received(
@@ -267,8 +267,8 @@ class Client:
         message, cookie = self.session_manager.user_message_to(
             receiver.id, message_model.body
         )
-
-        # TODO: Use the cookie to find corresponding acknowledge later
+        message_model.id = cookie
+        self.db_manager.save_message(message_model)
 
         self.log.debug(
             f"Sending message to {message.header.receiver}"

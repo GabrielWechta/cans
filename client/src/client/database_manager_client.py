@@ -167,7 +167,7 @@ class DatabaseManager:
     def save_message(
         self,
         message: Message = None,
-        state: CansMessageState = CansMessageState.DELIVERED,
+        state: CansMessageState = CansMessageState.NOT_DELIVERED,
         date: datetime = None,
         **kwargs: str,
     ) -> Optional[Message]:
@@ -183,7 +183,7 @@ class DatabaseManager:
                     id=message.id,
                     body=message.body,
                     date=message.date,
-                    state=state,
+                    state=state.value,
                     from_user=message.from_user.id,
                     to_user=message.to_user.id,
                 )
@@ -204,7 +204,7 @@ class DatabaseManager:
             try:
                 return Message.create(
                     date=date,
-                    state=state,
+                    state=state.value,
                     **kwargs,
                 )
             except peewee.IntegrityError as e1:
@@ -261,7 +261,7 @@ class DatabaseManager:
     def update_message(
         self,
         message: Message = None,
-        state: CansMessageState = CansMessageState.DELIVERED,
+        state: CansMessageState = CansMessageState.NOT_DELIVERED,
         date: datetime = None,
         id: str = "",
         **kwargs: str,
@@ -277,7 +277,7 @@ class DatabaseManager:
                     value={
                         "body": message.body,
                         "date": date,
-                        "state": state,
+                        "state": state.value,
                         "from_user": message.from_user,
                         "to_user": message.to_user,
                     },
@@ -291,7 +291,8 @@ class DatabaseManager:
         elif id:
             try:
                 is_successful = Message.set_by_id(
-                    key=id, value={**kwargs, "date": date, "state": state}
+                    key=id,
+                    value={**kwargs, "date": date, "state": state.value},
                 )
             except peewee.IntegrityError as e1:
                 self.log.error(

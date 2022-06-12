@@ -600,20 +600,13 @@ class UserInterface:
                             to_user=tile.chat_with,  # type: ignore
                             body=input_text,
                             date=datetime.now(),
-                            state=CansMessageState.DELIVERED,
+                            state=CansMessageState.NOT_DELIVERED.value,
                         )  # type: ignore
                         tile.reset_offset()
                         self.view.add_message(
                             tile.chat_with, new_message  # type: ignore
                         )  # type: ignore
-                        # TODO: do it on client level
-                        self.db_manager.save_message(
-                            body=input_text,
-                            date=datetime.now(),
-                            state=CansMessageState.DELIVERED,
-                            from_user=self.myself.id,
-                            to_user=tile.chat_with.id,
-                        )
+
                         # pass the message to the client core
                         await self.input_callbacks["upstream_message"](
                             new_message
