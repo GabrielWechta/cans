@@ -14,7 +14,7 @@ class StateMachine:
     def __init__(self, enum: Iterable, state: int) -> None:
         """Init the state machine."""
         self._state = state
-        self.type = type(enum)
+        self.type = enum
         self._states: List[Any] = list(enum)
 
     @property
@@ -53,6 +53,14 @@ class StartupState(Enum):
     PROMPT_USERNAME = auto()
     PROMPT_PASSWORD = auto()
     PROMPT_COLOR = auto()
+
+
+@unique
+class PasswordRecoveryState(Enum):
+    """Define input states during password recovery."""
+
+    PROMPT_MNEMONIC = auto()
+    PROMPT_NEW_PASSWORD = auto()
 
 
 if __name__ == "__main__":

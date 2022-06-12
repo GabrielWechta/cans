@@ -15,7 +15,7 @@ from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
 from .startup import Startup
 from .user_interface import UserInterface
-from .user_interface.state_machines import StartupState
+from .user_interface.state_machines import PasswordRecoveryState, StartupState
 
 
 class Client:
@@ -51,7 +51,11 @@ class Client:
         # Check if necessary files exist
         if self.startup.is_first_startup():
             # Promt user for username, password etc in blocking mode
-            user_username, user_passphrase, user_color = self.ui.early_prompt()
+            (
+                user_username,
+                user_passphrase,
+                user_color,
+            ) = self.ui.early_prompt_startup()
 
             # if anything needs to be changed, just do:
             # user_username, _, _ = self.ui.early_prompt(
@@ -81,6 +85,15 @@ class Client:
                 Friend(id="myself", username=user_username, color=user_color)
             )
 
+            mnemonics = [
+                "1234567890",
+                "1234567890",
+                "1234567890",
+                "1234567890",
+                "1234567890",
+            ]
+            self.ui.show_mnemonics(mnemonics)
+
         # handle consecutive startups
         else:
             # TODO: this while loop
@@ -90,6 +103,16 @@ class Client:
                 user_passphrase = self.ui.blocking_prompt(
                     "password", feedback=feedback
                 )
+
+                # Password recovery needed here:
+                if user_passphrase == "~":
+                    mnemonic = self.ui.blocking_prompt(
+                        PasswordRecoveryState.PROMPT_MNEMONIC
+                    )
+                    new_passphrase = self.ui.blocking_prompt(
+                        PasswordRecoveryState.PROMPT_NEW_PASSWORD
+                    )
+                    assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
                 self.priv_key, self.pub_key = self.startup.load_key_pair(

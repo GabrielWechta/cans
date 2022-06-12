@@ -195,15 +195,25 @@ height:         {self.height}
         if y < 0:
             y = 0
         buffer = buffer[: min(height, self.real_height - y)]
+        buffer.reverse()
 
-        for i, line in enumerate(buffer):
-            # truncate the line to fit in the box
-            with t.location(
-                x=self.real_x + x, y=self.real_y + y + i
-            ), t.hidden_cursor():
-                print(
-                    t.truncate(line, min(width, self.real_width - x)), end=""
-                )
+        x_pos = self.real_x + x
+        y_pos = self.real_y + y
+
+        if len(buffer) > 0:
+            # print messages
+            with t.hidden_cursor(), t.location(
+                (x_pos),
+                (y_pos),
+            ):
+                max_y = min(len(buffer) - 1, self.real_height - 1)
+                for y in range(max_y, -1, -1):  # noqa: FKA01
+                    line = buffer[y]
+
+                    # with t.location():
+                    print(line, end="")
+                    y_diff = max_y - y + 1
+                    print(t.move_xy(x_pos, y_pos + y_diff), end="")
 
     async def clear_tile(self, t: Terminal) -> None:
         """Clear tile for rendering."""
@@ -251,6 +261,7 @@ class PromptTile(Tile):
         self,
         prompt_text: str,
         input_validation_function: Optional[Callable[[str], bool]],
+        border_color: str = "bold_purple",
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -263,6 +274,7 @@ class PromptTile(Tile):
         # Validation function should return a boolean
         # Validation requirements should be stated in the prompt_text
         self.input_validation = input_validation_function
+        self.border_color = border_color
 
     async def render(self, t: Terminal) -> None:
         """Render the Prompt Tile."""
@@ -276,16 +288,16 @@ class PromptTile(Tile):
         # b = a / phi
         a = math.ceil(math.sqrt((len(self.prompt_text)) * phi))
         # b = math.ceil(a / phi)
-        # monospace character width is ~60^ of height, gotta adjust
+        # monospace character width is ~60% of height, gotta adjust
         prompt_width = min(self.real_width, math.ceil(a / 0.6))
+
+        color = getattr(t, self.border_color)
 
         # construct the text print
         prompt = t.wrap(self.prompt_text, prompt_width)
         prompt += t.wrap(self.feedback, prompt_width)
         prompt = (
-            [t.bold_purple("-") * prompt_width]
-            + prompt
-            + [t.bold_purple("-") * prompt_width]
+            [color("-") * prompt_width] + prompt + [color("-") * prompt_width]
         )
         prompt = [t.center(text, prompt_width) for text in prompt]
         prompt_height = len(prompt)
@@ -307,6 +319,15 @@ class PromptTile(Tile):
         await self.render(t)
 
 
+class MessageTile(PromptTile):
+    """Tile which sole purpose is to display a message."""
+
+    async def consume_input(self, inp: str, t: Terminal) -> None:
+        """Consume input."""
+        self.feedback = t.red("! ") + inp + t.red(" !")
+        await self.render(t)
+
+
 class InputTile(Tile):
     """Input Tile."""
 
@@ -323,12 +344,12 @@ class InputTile(Tile):
         """Calculate real size, excluding margins etc."""
         width = (
             self._width - int("l" in self.margins) - int("r" in self.margins)
-        ) - Terminal().length(self.prompt)
+        )
         height = (
             self._height - int("u" in self.margins) - int("d" in self.margins)
         ) - 1  # for titlebar
 
-        self.real_width = width
+        self.real_width = width - Terminal().length(self.prompt)
         self.real_height = height
 
     async def on_resize(self, t: Terminal) -> None:
@@ -396,6 +417,7 @@ class InputTile(Tile):
                     next = term.inkey(timeout=0.010)
 
                 # set cursor position
+                # TODO: refactor all of those to use term.move_left
                 run_coroutine_threadsafe(
                     self.print_threadsafe(
                         term.move_xy(
@@ -472,16 +494,10 @@ class InputTile(Tile):
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ):
+                        ) and input_text != "":
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0]
-                                        + term.length(input_text),
-                                        prompt_location[1],
-                                    ),
-                                ),
+                                self.print_threadsafe(term.move_left),
                                 loop,
                             )
                         elif self.input_filter(val):
@@ -580,17 +596,10 @@ class InputTile(Tile):
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ):
+                        ) and input_text != "":
                             input_text = input_text[:-1]
                             run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0]
-                                        + term.length(input_text)
-                                        + 1,
-                                        prompt_location[1],
-                                    ),
-                                ),
+                                self.print_threadsafe(term.move_left),
                                 loop,
                             )
                         elif self.input_filter(val):
@@ -615,7 +624,7 @@ class InputTile(Tile):
 
         with t.hidden_cursor(), t.location(x_pos, y_pos):
             out = self.truncate_input(self.prompt + text, t)
-            out = t.ljust(out, self.real_width)
+            out = t.ljust(out, self.real_width + t.length(self.prompt))
             print(out, end="")
 
     async def print_threadsafe(self, text: str) -> None:
@@ -632,9 +641,10 @@ class InputTile(Tile):
     def truncate_input(self, text: str, t: Terminal) -> str:
         """Truncate text to fit into the input box."""
         out = text
-        if t.length(text) > self.real_width:
-            out = text[t.length(text) - (self.real_width) + 1:]  # fmt: skip
-            out = t.on_red("<") + out
+        if t.length(text) > self.real_width + 1:
+            out = text[t.length(text) - (self.real_width)
+                       + (t.length(self.prompt) - 1):]  # fmt: skip
+            out = t.on_red("<" * (t.length(self.prompt))) + out
             # fmt:skip
         return out
 
@@ -767,18 +777,24 @@ class ChatTile(Tile):
             if len(buffer) >= self.real_height:
                 break
 
+        y_pos = (
+            self.y
+            + int("u" in self.margins)
+            + 1
+            + max(self.real_height - len(buffer), 0)
+        )
+
         if len(buffer) > 0:
             # print messages
-            for y in range(0 + 1, (self.real_height + 1)):  # +1 for title
-                with t.hidden_cursor(), t.location(
-                    (self.real_x),
-                    (
-                        self.y
-                        + int("u" in self.margins)
-                        + self.real_height
-                        + 1
-                        - y
-                    ),
-                ):
-                    if len(buffer) > y - 1:
-                        print(buffer[y - 1], end="")
+            with t.hidden_cursor(), t.location(
+                (self.real_x),
+                (y_pos),
+            ):
+                max_y = min(len(buffer) - 1, self.real_height - 1)
+                for y in range(max_y, -1, -1):  # noqa: FKA01
+                    line = buffer[y]
+
+                    # with t.location():
+                    print(line, end="")
+                    y_diff = max_y - y + 1
+                    print(t.move_xy(self.real_x, y_pos + y_diff), end="")
