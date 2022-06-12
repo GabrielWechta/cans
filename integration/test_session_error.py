@@ -12,7 +12,7 @@ from olm import Account
 from client import Client
 from client.session_manager_client import SessionManager
 from common.keys import EcPemKeyPair, digest_key, generate_keys
-from common.messages import CansMessage, CansMsgId
+from common.messages import CansMessage, CansMsgId, UserMessage, cans_send
 
 
 class SessionErrorOkException(Exception):
@@ -146,7 +146,7 @@ async def impl_test_bad_message_format():
     # Let all parties connect to the server
     alice_task = asyncio.create_task(alice.run())
     bob_task = asyncio.create_task(bob.run())
-    charlie_task = asyncio.create_task(mallory.run())
+    mallory_task = asyncio.create_task(mallory.run())
     # Give them some time
     await asyncio.sleep(3)
 
@@ -156,10 +156,60 @@ async def impl_test_bad_message_format():
         asyncio.gather(  # noqa: FKA01
             alice_task,
             bob_task,
-            charlie_task,
+            mallory_task,
             # Let Mallory ping both Alice and Bob - at some point he should
             # send a message to Alice encrypted with Mallory-Bob session key
             mallory.ping_peers(),
+        ),
+        timeout,
+    )
+
+
+async def impl_test_invalid_magic_in_handshake():
+    """Async implementation of the test."""
+    alice_secret, alice_public = generate_keys()
+    bob_secret, bob_public = generate_keys()
+
+    alice = MockClient(
+        keys=(alice_secret, alice_public),
+        friends={digest_key(bob_public)},
+    )
+    bob = MockClient(
+        keys=(bob_secret, bob_public),
+        friends={digest_key(alice_public)},
+    )
+
+    # Let both parties connect to the server
+    alice_task = asyncio.create_task(alice.run())
+    bob_task = asyncio.create_task(bob.run())
+    # Give them some time
+    await asyncio.sleep(3)
+
+    async def send_malformed_handshake(client: Client, peer: str) -> None:
+        """Send a malformed handshake."""
+        message = CansMessage()
+        message.header.msg_id = CansMsgId.PEER_HELLO
+        message.header.sender = client.session_manager.identity
+        message.header.receiver = peer
+        message.payload = {"magic": "Invalid magic value"}
+        client.session_manager.session_sm.make_session_pending(
+            # Dummy message to be buffer by the session manager
+            UserMessage(peer, "Hi")
+        )
+        message = client.session_manager._encrypt_message_payload(message)
+        # A hack since we may be calling cans_send concurrently from the
+        # session manager's upstream handler, but since this is a controlled
+        # environment and no other upstream messages are sent, there is no
+        # risk of a race
+        await cans_send(message, client.session_manager.conn)
+
+    timeout = 5
+    await asyncio.wait_for(
+        # Gather all tasks to catch any exceptions
+        asyncio.gather(  # noqa: FKA01
+            alice_task,
+            bob_task,
+            send_malformed_handshake(alice, digest_key(bob_public)),
         ),
         timeout,
     )
@@ -170,4 +220,12 @@ def test_bad_message_format():
     with pytest.raises(SessionErrorOkException):
         asyncio.get_event_loop().run_until_complete(
             impl_test_bad_message_format()
+        )
+
+
+def test_invalid_magic_in_handshake():
+    """Test sending a peer-to-peer handshake with invalid payload."""
+    with pytest.raises(SessionErrorOkException):
+        asyncio.get_event_loop().run_until_complete(
+            impl_test_invalid_magic_in_handshake()
         )
