@@ -2,6 +2,7 @@
 
 import math
 from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
+from collections import namedtuple
 from datetime import datetime
 from threading import Event
 from typing import Any, Callable, List, Optional, Tuple
@@ -10,6 +11,8 @@ from blessed import Terminal, keyboard
 
 from ..models import CansMessageState, Friend, Message
 from .input import InputMess, InputMode
+
+BufferItem = namedtuple("BufferItem", "message y_pos")
 
 
 class Tile:
@@ -691,6 +694,7 @@ class ChatTile(Tile):
         self.new_messages: Queue = Queue()
         self.chat_with = chat_with
         self.myself = identity
+        self._current_buffer: List[BufferItem] = []
 
     @property
     def buffer(self) -> List[Message]:
@@ -722,6 +726,22 @@ class ChatTile(Tile):
         self._buffer.insert(0, mess)
         await self.on_buffer_change()
 
+    async def update_message(self, new_message: Message) -> None:
+        """Update message in buffer."""
+        filtered = filter(lambda x: x.id == new_message.id, self._buffer)
+        for mess in filtered:
+            mess.replace(new_message)
+            await self.render_message(mess)
+
+    async def update_message_status(
+        self, id: str, status: CansMessageState
+    ) -> None:
+        """Update status of message in buffer."""
+        filtered = filter(lambda x: x.id == id, self._buffer)
+        for mess in filtered:
+            mess.state = status
+            await self.render_message(mess)
+
     async def on_buffer_change(self) -> None:
         """Something happens on buffer change."""
         # pass
@@ -745,37 +765,81 @@ class ChatTile(Tile):
             )
         )
 
+    async def render_message(self, message: Message) -> bool:
+        """Rerender just one message from current buffer."""
+        filtered_buffer = filter(
+            lambda x: x.message == message, self._current_buffer
+        )
+        t = Terminal()
+
+        if not filtered_buffer:
+            return False
+
+        y_pos = self.y + int("u" in self.margins) + 1
+
+        for message_item in filtered_buffer:
+            with t.hidden_cursor(), t.location(
+                (self.real_x),
+                (y_pos + message_item.y_pos),
+            ):
+                printable_message = self._construct_message_to_print(
+                    t, message_item.message
+                )
+                for i, line in enumerate(printable_message):
+                    print(line, end="")
+                    print(t.move_xy(self.real_x, y_pos + i), end="")
+        return True
+
+    def _construct_message_to_print(
+        self, t: Terminal, mes: Message
+    ) -> List[str]:
+        """Reduce a Message object to printable form."""
+        message = t.gray(mes.date.strftime("[%H:%M]"))
+        user_color = getattr(t, mes.from_user.color)
+        message += (
+            t.gray("[")
+            + user_color(mes.from_user.username)
+            + (
+                t.gray("]> ")
+                if mes.state == CansMessageState.DELIVERED
+                else t.gray("]? ")
+            )
+            + str(mes.body)
+        )
+
+        wrapped = (
+            t.wrap(message, self.real_width) if self.real_width > 0 else []
+        )
+        # we need to reverse because were printing from the bottom up
+        if len(wrapped) > 0:
+            wrapped.reverse()
+
+        return wrapped
+
+    def _construct_current_buffer(self, t: Terminal) -> List[str]:
+        """Construct a buffer of currently displayed messages.
+
+        Returns the messages in printable form.
+        """
+        # construct message buffer
+        buffer: List[BufferItem] = []
+        printable_messages: List[str] = []
+        for i in range(self.buffer_offset, len(self._buffer)):
+            mes = self._buffer[i]
+            buffer.append(BufferItem(mes, len(printable_messages)))
+
+            printable_messages += self._construct_message_to_print(t, mes)
+            if len(printable_messages) >= self.real_height:
+                break
+
+        self._current_buffer = buffer
+        return printable_messages
+
     async def render(self, t: Terminal) -> None:
         """Render the Tile."""
         await Tile.render(self, t)
 
-        # construct message buffer
-        buffer = []
-        for i in range(self.buffer_offset, len(self._buffer)):
-            mes = self._buffer[i]
-
-            message = t.gray(mes.date.strftime("[%H:%M]"))
-            user_color = getattr(t, mes.from_user.color)
-            message += (
-                t.gray("[")
-                + user_color(mes.from_user.username)
-                + (
-                    t.gray("]> ")
-                    if mes.state == CansMessageState.DELIVERED
-                    else t.gray("]? ")
-                )
-                + str(mes.body)
-            )
-
-            wrapped = (
-                t.wrap(message, self.real_width) if self.real_width > 0 else []
-            )
-            # we need to reverse because were printing from the bottom up
-            if len(wrapped) > 0:
-                wrapped.reverse()
-                buffer += wrapped
-            if len(buffer) >= self.real_height:
-                break
+        buffer = self._construct_current_buffer(t)
 
         y_pos = (
             self.y
