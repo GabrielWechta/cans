@@ -151,7 +151,7 @@ class SessionManager:
 
         # Wait for the challenge
         challenge_message: SchnorrChallenge = await cans_recv(conn)
-        challenge = challenge_message.payload["challenge"]
+        challenge = int(challenge_message.payload["challenge"])
 
         # Send the response
         response = get_schnorr_response(

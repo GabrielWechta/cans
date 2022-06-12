@@ -66,23 +66,28 @@ def schnorr_verify(
     public_key: str, commitment: str, challenge: int, response: int
 ) -> bool:
     """Verify Schnorr protocol."""
-    # TODO: Add error handling if point decoding fails
+    try:
+        # Recover EccPoint from PEM-encoded commitment
+        commit_point = ECC.import_key(
+            encoded=commitment,
+            curve_name=PKI_CURVE_NAME,
+        ).pointQ
 
-    # Recover EccPoint from PEM-encoded commitment
-    commit_point = ECC.import_key(
-        encoded=commitment,
-        curve_name=PKI_CURVE_NAME,
-    ).pointQ
+        # Recover EccPoint from PEM-encoded public key
+        pubkey_point = ECC.import_key(
+            encoded=public_key,
+            curve_name=PKI_CURVE_NAME,
+        ).pointQ
 
-    # Recover EccPoint from PEM-encoded public key
-    pubkey_point = ECC.import_key(
-        encoded=public_key,
-        curve_name=PKI_CURVE_NAME,
-    ).pointQ
+        # Create a point based on the response (scalar) and the group generator
+        response_point = (
+            ECC.construct(curve=PKI_CURVE_NAME, d=response).public_key().pointQ
+        )
 
-    # Create a point based on the response (scalar) and group generator (s * G)
-    response_point = (
-        ECC.construct(curve=PKI_CURVE_NAME, d=response).public_key().pointQ
-    )
+        return pubkey_point * challenge + commit_point == response_point
 
-    return pubkey_point * challenge + commit_point == response_point
+    except ValueError:
+        # From the point of view of the application the details of the
+        # exception are irrelevant - what matters is that verification
+        # failed
+        return False
