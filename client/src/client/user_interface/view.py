@@ -13,7 +13,7 @@ from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
 
-from ..database_manager_client import DatabaseManager
+from ..database_manager_client import CansMessageState, DatabaseManager
 from ..models import Friend, Message
 from .tiles import ChatTile, HeaderTile, InputTile, PromptTile
 from .tiling_managers import MonadTallLayout
@@ -238,6 +238,26 @@ class View:
                 found_tiles.append(tile)
 
         return found_tiles
+
+    def update_message(
+        self,
+        chat_with: Union[Friend, str],
+        message: Message,
+    ) -> None:
+        """Update a message in chat tiles with selected users."""
+        chats = self.find_chats(chat_with)
+        if len(chats) > 0:
+            for chat in chats:
+                self.loop.create_task(chat.update_message(message))
+
+    def update_message_status(
+        self, chat_with: Union[Friend, str], id: str, status: CansMessageState
+    ) -> None:
+        """Update a message in chat tiles with selected users."""
+        chats = self.find_chats(chat_with)
+        if len(chats) > 0:
+            for chat in chats:
+                self.loop.create_task(chat.update_message_status(id, status))
 
     def add_message(
         self,
