@@ -347,12 +347,12 @@ class InputTile(Tile):
         """Calculate real size, excluding margins etc."""
         width = (
             self._width - int("l" in self.margins) - int("r" in self.margins)
-        ) - Terminal().length(self.prompt)
+        )
         height = (
             self._height - int("u" in self.margins) - int("d" in self.margins)
         ) - 1  # for titlebar
 
-        self.real_width = width
+        self.real_width = width - Terminal().length(self.prompt)
         self.real_height = height
 
     async def on_resize(self, t: Terminal) -> None:
@@ -627,7 +627,7 @@ class InputTile(Tile):
 
         with t.hidden_cursor(), t.location(x_pos, y_pos):
             out = self.truncate_input(self.prompt + text, t)
-            out = t.ljust(out, self.real_width)
+            out = t.ljust(out, self.real_width + t.length(self.prompt))
             print(out, end="")
 
     async def print_threadsafe(self, text: str) -> None:

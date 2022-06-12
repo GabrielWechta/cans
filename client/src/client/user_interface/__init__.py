@@ -140,7 +140,7 @@ class UserInterface:
                 "password for your account. Password cannot contain any "
                 "whitespace characters and if provided it should be at "
                 "least 6 characters long. Please try to remember it this "
-                " time.",
+                "time.",
                 validation=self.validate_password,
             ),
             "password": InputState(
@@ -378,7 +378,7 @@ class UserInterface:
             "Those are your one-time passwords, that you can use to "
             "recover your key if you forget your password. \n"
             + self.term.red_bold(
-                "KEEP THEM SAFE AS THIS IS YOUR ONLY WAY TO RECOVER KEY!"
+                "KEEP THEM SAFE AS THIS IS YOUR ONLY WAY TO RECOVER THE KEY!"
             )
             + "\n\n"
         )

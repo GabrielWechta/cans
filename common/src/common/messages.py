@@ -411,33 +411,19 @@ def __deserialize(serial: CansSerial) -> CansMessage:
 
 def __validate_format(pretender: dict) -> None:
     """Validate the format of a CANS message."""
-    # TODO: If this is too much overhead, simply try accessing all
-    #       mandatory fields and catch KeyErrors
     try:
-        # Assert at least the header is present
-        if "header" not in pretender.keys():
-            raise CansDeserializationError("No valid header")
+        # Assert no fields other than header and payload
+        assert not set(pretender.keys()) - {
+            "header",
+            "payload",
+        }, "Unexpected fields in the message"
+        # Assert no unexpected fields in the header
+        assert not set(pretender["header"].keys()) - {
+            "msg_id",
+            "sender",
+            "receiver",
+        }, "Unexpected fields in the header"
 
-        # Assert valid format header
-        for header_field in pretender["header"].keys():
-            if header_field not in CansMessage.CansHeader().__dict__:
-                raise CansDeserializationError(
-                    f"Unexpected header field: {header_field}"
-                )
-        for expected_field in CansMessage.CansHeader().__dict__.keys():
-            if expected_field not in pretender["header"].keys():
-                raise CansDeserializationError(
-                    f"Header field missing: {expected_field}"
-                )
-
-        # Assert no other fields
-        for field in pretender.keys():
-            if field not in ["header", "payload"]:
-                raise CansDeserializationError(f"Unexpected field: {field}")
-
-    except CansDeserializationError as e:
-        raise e
-
-    except Exception as e:
+    except (TypeError, AttributeError, AssertionError) as e:
         # Translate any exception to a deserialization error
-        raise CansDeserializationError(f"Unknown error: {e.args}")
+        raise CansDeserializationError(f"Deserialization failed: {str(e)}")

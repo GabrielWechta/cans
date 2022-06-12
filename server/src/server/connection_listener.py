@@ -51,9 +51,6 @@ class ConnectionListener:
 
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_context.load_cert_chain(
-            # TODO: Resolve the certificate and key paths dynamically using
-            # e.g. .env file (at least serverside, client uses the local
-            # self-signed cert only for proof-of-concept purposes anyway)
             certfile=self.certpath,
             keyfile=self.keypath,
         )
@@ -113,7 +110,12 @@ class ConnectionListener:
                 code=CansStatusCode.AUTH_FAILURE,
                 reason="Authentication failed",
             )
-        except (CansMessageException, AttributeError, KeyError) as e:
+        except (
+            CansMessageException,
+            AttributeError,
+            KeyError,
+            ValueError,
+        ) as e:
             self.log.error(
                 f"{type(e).__name__} raised when establishing session with"
                 + f" {conn.remote_address[0]}:{conn.remote_address[1]}:"
@@ -140,8 +142,8 @@ class ConnectionListener:
         """Run authentication protocol with the user."""
         # Await commitment message
         commit_message: SchnorrCommit = await cans_recv(conn)
-        public_key = commit_message.payload["public_key"]
-        commitment = commit_message.payload["commitment"]
+        public_key = str(commit_message.payload["public_key"])
+        commitment = str(commit_message.payload["commitment"])
 
         # Send back the challenge
         challenge = get_schnorr_challenge()
@@ -150,7 +152,7 @@ class ConnectionListener:
 
         # Wait for the response
         response_message: SchnorrResponse = await cans_recv(conn)
-        response = response_message.payload["response"]
+        response = int(response_message.payload["response"])
 
         if schnorr_verify(
             public_key=public_key,

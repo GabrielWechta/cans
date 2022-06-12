@@ -86,11 +86,11 @@ class Client:
             )
 
             mnemonics = [
-                "daklnrvjkn13",
-                "daklnrvjkn13",
-                "daklnrvjkn13",
-                "daklnrvjkn13",
-                "daklnrvjkn13",
+                "1234567890",
+                "1234567890",
+                "1234567890",
+                "1234567890",
+                "1234567890",
             ]
             self.ui.show_mnemonics(mnemonics)
 
@@ -112,7 +112,7 @@ class Client:
                     new_passphrase = self.ui.blocking_prompt(
                         PasswordRecoveryState.PROMPT_NEW_PASSWORD
                     )
-                    assert mnemonic and new_passphrase
+                    assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
                 self.priv_key, self.pub_key = self.startup.load_key_pair(
