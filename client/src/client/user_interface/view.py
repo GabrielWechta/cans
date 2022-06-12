@@ -87,6 +87,7 @@ class View:
             y=header.height,
             term=self.term,
             use_margins=True,
+            change_focus_on_add=False,
         )
 
         # add chat tile to the layout
@@ -188,7 +189,7 @@ class View:
             buffer=history,
         )
         self.layout.add(chat)
-        # self.loop.create_task(self.layout.render_all())
+        self.loop.create_task(self.layout.render_all())
 
     def swap_chat(self, chat_with: Union[Friend, str]) -> None:
         """Add swap current tile with a new chat with given user."""
@@ -266,29 +267,25 @@ class View:
     ) -> None:
         """Add a message to buffers of chat tiles with given user of id."""
         chats = self.find_chats(chat_with)
-        if len(chats) > 0:
-            # if we're provided with a Message, just use it
-            if isinstance(message, Message):
-                new_message = message
-            # else we only have payload, so we have to construct it
-            else:
-                new_message = Message(
-                    from_user=chats[0].chat_with,  # type: ignore
-                    to_user=self.myself,
-                    body=message,  # type: ignore
-                    date=datetime.now(),
-                )
-
-            for chat in chats:
-                self.loop.create_task(
-                    chat.add_message_to_buffer(new_message)  # type: ignore
-                )  # type: ignore
+        if len(chats) == 0:
+            self.add_chat(chat_with=chat_with)
+            chats = self.find_chats(chat_with)
+        # if we're provided with a Message, just use it
+        if isinstance(message, Message):
+            new_message = message
+        # else we only have payload, so we have to construct it
         else:
-            self.log.error(
-                # it's always either a dataclass or string, should print nicely
-                f"Tried adding message {message}"
-                + f" to a non-existing chat with {chat_with}"
+            new_message = Message(
+                from_user=chats[0].chat_with,  # type: ignore
+                to_user=self.myself,
+                body=message,  # type: ignore
+                date=datetime.now(),
             )
+
+        for chat in chats:
+            self.loop.create_task(
+                chat.add_message_to_buffer(new_message)  # type: ignore
+            )  # type: ignore
 
     def input_queue(self) -> asyncio.Queue:
         """Return user input queue."""

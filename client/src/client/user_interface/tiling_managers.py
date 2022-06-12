@@ -166,13 +166,14 @@ class MonadTallLayout:
         y: int,
         term: Terminal,
         use_margins: bool = False,
+        change_focus_on_add: bool = False,
     ) -> None:
         """Init the view."""
         self.absolute_sizes: List[int] = []
         self.screen_rect = MonadTallLayout.screen_rect_tuple(
             width=width, height=height, x=x, y=y
         )
-        self.tiles = TileList()
+        self.tiles = TileList(change_focus_on_add)
         self.align = MonadTallLayout.align
         self.ratio = MonadTallLayout.ratio
 

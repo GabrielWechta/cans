@@ -86,6 +86,7 @@ class UserInterface:
             "friends": self.show_friends,
             "add": self.add_friend,
             "remove": self.remove_friend,
+            "share": self.command_share_pubkey,
         }
         """Mapping for slash commands"""
 
@@ -160,6 +161,12 @@ class UserInterface:
 
         self.loop.create_task(self.view.render_all())
 
+        self.public_key: Optional[str] = None
+
+    def set_public_key(self, key: str) -> None:
+        """Set given key as identity user's public key."""
+        self.public_key = key
+
     def shutdown(self) -> None:
         """Shut down the user interface."""
         print(self.term.exit_fullscreen)
@@ -206,8 +213,18 @@ class UserInterface:
         username_stripped = username.strip()
         return username == username_stripped
 
-    def add_friend(self, username: str, key: str, color: str = "") -> None:
+    def add_friend(
+        self, username: str, key: str = "", color: str = ""
+    ) -> None:
         """Add given key to friendslist."""
+        if not key and isinstance(self.view.layout.current_tile, ChatTile):
+            friend = self.view.layout.current_tile.chat_with
+            friends = self.get_friends()
+            if friend not in friends:
+                key = friend.id
+            else:
+                raise Exception("Key is required.")
+
         if not color:
             colors = [
                 "red",
@@ -229,14 +246,31 @@ class UserInterface:
             username=username, id=key, color=color, date_added=datetime.now()
         )
         assert new_user, "Something went wrong with adding new user"
+
+        # repoen any existing chats
+        chats = self.view.find_chats(key)
+        for chat in chats:
+            self.view.layout.remove(chat)
+            self.view.add_chat(chat_with=username)
+
         self.on_system_message_received(
             message=f"New friend {getattr(self.term, color)(username)} added!"
         )
 
-    def remove_friend(self, key: str) -> None:
+    def remove_friend(self, key: str = "") -> None:
         """Remove given key from friendslist."""
-        # TODO: remove from db
-        pass
+        if not key and isinstance(self.view.layout.current_tile, ChatTile):
+            friend = self.view.layout.current_tile.chat_with
+            friends = self.get_friends()
+            if friend in friends:
+                key = friend.id
+            else:
+                raise Exception("Key is required.")
+
+        chats = self.view.find_chats(key)
+        for chat in chats:
+            self.view.layout.remove(chat)
+        self.db_manager.remove_friend(key)
 
     def get_friends(self) -> List:
         """Get list of friends from DB."""
@@ -244,11 +278,32 @@ class UserInterface:
 
         return friends
 
+    def command_share_pubkey(self) -> None:
+        """Print and copy user's own public key."""
+        key = self.public_key
+        pyperclip.copy(key)
+
+        color = getattr(self.term, self.myself.color)
+
+        self.on_system_message_received(
+            message=f"Your key, copied to clipboard: "
+            f"{self.term.underline(color(key))}"
+        )
+
     def on_new_message_received(
         self, message: Union[Message, str], user: Union[Friend, str]
     ) -> None:
         """Handle new message and add it to proper chat tiles."""
-        self.view.add_message(user, message)
+        if isinstance(user, str):
+            id = user
+        else:
+            id = user.id
+        friend = self.db_manager.get_friend(id)
+
+        # unknown user
+        if not friend:
+            friend = Friend(id=id, username=id[:10], color="gray")
+        self.view.add_message(friend, message)
 
     def show_friends(self) -> None:
         """Show friends (TODO: some real implementation)."""

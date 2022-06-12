@@ -19,7 +19,7 @@ COPY resources/certs/CansKey.pem resources/certs/CansKey.pem
 
 CMD ["python", "-u", "-m", "server"]
 
-FROM python:3.8 AS client_echo
+FROM python:3.8 AS client
 
 WORKDIR /usr/src/app
 
