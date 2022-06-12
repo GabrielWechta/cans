@@ -44,13 +44,10 @@ class Startup:
 
     def is_first_startup(self) -> bool:
         """Check if user's EC EcPemKeyPair exists."""
-        pub_key_exists = path.isfile(self.user_public_key_path)
         priv_key_exists = path.isfile(self.user_private_key_path)
         crypto_account_exists = path.isfile(self.crypto_account_path)
 
-        return not (
-            pub_key_exists and priv_key_exists and crypto_account_exists
-        )
+        return not (priv_key_exists and crypto_account_exists)
 
     def create_crypto_account(self, passphrase: str) -> Account:
         """Create a libolm Account() object and store it."""

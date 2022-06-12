@@ -1,6 +1,5 @@
 """CANS application UI."""
 import asyncio
-import os
 from collections import namedtuple
 from datetime import datetime
 from random import choice
@@ -143,6 +142,10 @@ class UserInterface:
         self.loop.run_until_complete(self.create_queue())
 
         self.loop.create_task(self.view.render_all())
+
+    def shutdown(self) -> None:
+        """Shut down the user interface."""
+        print(self.term.exit_fullscreen)
 
     def set_identity_user(self, identity: Friend) -> None:
         """Set given Friend as myself."""
@@ -446,10 +449,9 @@ class UserInterface:
 
             # handle graceful exit
             if mode == InputMode.EXIT:
-                print(self.term.exit_fullscreen)
-                # TODO: add callback to client to
-                # gracefully close the application
-                os._exit(0)
+                # Note that shutdown is an async coroutine and
+                # must be awaited
+                await self.input_callbacks["graceful_shutdown"]()
 
             # command mode
             elif mode == InputMode.COMMAND and self.commands_allowed():
