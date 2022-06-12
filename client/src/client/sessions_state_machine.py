@@ -52,6 +52,12 @@ class StateMachineInconsistency(Exception):
     ...
 
 
+class CansSessionError(Exception):
+    """Session error."""
+
+    ...
+
+
 class ActiveSession(DoubleRatchetSession):
     """A well-established session."""
 
@@ -113,9 +119,8 @@ class SessionsStateMachine:
 
     def get_active_session(self, peer: str) -> ActiveSession:
         """Fetch an active session."""
-        assert (
-            peer in self.active_sessions.keys()
-        ), "Sessions state machine inconsistency"
+        if peer not in self.active_sessions.keys():
+            raise StateMachineInconsistency(f"No active session with '{peer}'")
         return self.active_sessions[peer]
 
     def get_encryption_callback(self, peer: str) -> Callable:
@@ -161,10 +166,9 @@ class SessionsStateMachine:
         elif peer in self.active_sessions.keys():
             self.active_sessions.pop(peer)
 
-    def make_session_pending(
-        self, peer: str, user_message: CansMessage
-    ) -> None:
+    def make_session_pending(self, user_message: CansMessage) -> None:
         """Transition from Potential Session to Pending Session."""
+        peer = user_message.header.receiver
         self.log.debug(f"Session with '{peer}' is now pending")
         potential_session = self.potential_sessions.pop(peer)
         self.pending_sessions[peer] = PendingSession(
@@ -176,9 +180,10 @@ class SessionsStateMachine:
         # Buffer the user message
         self.pending_sessions[peer].buffer_message(user_message)
 
-    def pend_message(self, peer: str, message: CansMessage) -> None:
+    def pend_message(self, message: CansMessage) -> None:
         """Buffer a pending user message."""
-        self.pending_sessions[peer].buffer_message(message)
+        receiver = message.header.receiver
+        self.pending_sessions[receiver].buffer_message(message)
 
     def flush_pending_session(self, peer: str) -> List[CansMessage]:
         """Flush messages buffered while waiting for session ACK."""
@@ -199,10 +204,11 @@ class SessionsStateMachine:
         # olm level - without this, olm will continue producing
         # prekey messages
         olm_message = OlmMessage(message.payload["magic"])
-        assert (
+        if (
             self.active_sessions[peer].decrypt(olm_message)
-            == CANS_PEER_HANDSHAKE_MAGIC
-        ), "Magic value in peer handshake invalid"
+            != CANS_PEER_HANDSHAKE_MAGIC
+        ):
+            raise CansSessionError("Magic value in peer handshake invalid")
 
     def activate_inbound_session(self, message: PeerHello) -> None:
         """Activate an inbound session based on a received prekey message."""
@@ -219,6 +225,5 @@ class SessionsStateMachine:
         active_session.start_inbound_session(prekey_message)
         # Store new active session
         self.active_sessions[peer] = active_session
-        assert (
-            active_session.decrypt(prekey_message) == CANS_PEER_HANDSHAKE_MAGIC
-        ), "Magic value in peer handshake invalid"
+        if active_session.decrypt(prekey_message) != CANS_PEER_HANDSHAKE_MAGIC:
+            raise CansSessionError("Magic value in peer handshake invalid")

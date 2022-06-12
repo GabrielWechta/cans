@@ -57,7 +57,7 @@ class DoubleRatchetSession:
         """Interface for encrypting plaintext for both types of sessions."""
         assert self.session is not None, (
             f"Can't encrypt {plaintext}. "
-            f"This account does not have initialized DR session."
+            f"This account does not have an initialized DR session."
         )
 
         ciphertext = self.session.encrypt(plaintext=plaintext)
@@ -67,7 +67,7 @@ class DoubleRatchetSession:
         """Interface for decrypting ciphertext for both types of sessions."""
         assert self.session is not None, (
             f"Can't decrypt {ciphertext}. "
-            f"This account does not have initialized DR session."
+            f"This account does not have an initialized DR session."
         )
 
         return self.session.decrypt(message=ciphertext)

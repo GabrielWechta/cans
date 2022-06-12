@@ -37,7 +37,7 @@ from common.messages import (
 )
 
 from .e2e_encryption import TripleDiffieHellmanInterface
-from .sessions_state_machine import SessionsStateMachine
+from .sessions_state_machine import CansSessionError, SessionsStateMachine
 
 
 class SessionManager:
@@ -219,7 +219,7 @@ class SessionManager:
                 f"Sending first message to peer '{receiver}'. Buffering the"
                 + " user message and sending PEER_HELLO first..."
             )
-            self.session_sm.make_session_pending(receiver, message)
+            self.session_sm.make_session_pending(message)
             # Send a hello message first
             message = PeerHello(receiver)
             message.header.sender = self.identity
@@ -233,7 +233,7 @@ class SessionManager:
                 + " not established"
             )
             # Still waiting for ACK, buffer the message
-            self.session_sm.pend_message(receiver, message)
+            self.session_sm.pend_message(message)
         elif self.session_sm.active_session_with(receiver):
             # Well-established session, encrypt the payload
             message = self._encrypt_message_payload(message)
@@ -258,7 +258,7 @@ class SessionManager:
             try:
                 # Call a registered handler
                 await self.message_handlers[message.header.msg_id](message)
-            except OlmSessionError as e:
+            except (OlmSessionError, CansSessionError) as e:
                 self.log.error(
                     f"Error in session with '{message.header.sender}':"
                     + f" {str(e)}"
@@ -418,13 +418,12 @@ class SessionManager:
         """Handle message type PEER_LOGIN."""
         peer = message.payload["peer"]
         identity_key, one_time_key = message.payload["public_keys_bundle"]
+        self.log.info(f"'{peer}' just logged in!")
         self.session_sm.add_potential_session(
             peer=peer,
             identity_key=identity_key,
             one_time_key=one_time_key,
         )
-
-        self.log.info(f"'{peer}' just logged in!")
         await self.downstream_system_message_queue.put(message)
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
