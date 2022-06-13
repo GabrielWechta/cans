@@ -107,6 +107,10 @@ class Startup:
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).hexdigest()
 
+    def get_app_password(self, priv_key: str) -> str:
+        """Get a password used to encrypt database and Olm account."""
+        return hashlib.sha256(priv_key.encode()).hexdigest()
+
     def _encrypt(self, key: str, plaintext: str) -> bytes:
         """Use AES-GCM to encrypt a given plaintext."""
         key_bytes = bytes.fromhex(key)

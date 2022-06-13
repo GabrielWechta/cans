@@ -1,7 +1,6 @@
 """CANS communicator frontend."""
 
 import asyncio
-import hashlib
 import logging
 import logging.handlers
 import os
@@ -75,9 +74,7 @@ class Client:
                 self.password
             )
 
-            self.app_password = hashlib.sha512(
-                self.priv_key.encode()
-            ).hexdigest()
+            self.app_password = self.startup.get_app_password(self.priv_key)
 
             self.account = self.startup.create_crypto_account(
                 self.app_password
@@ -133,9 +130,9 @@ class Client:
                         self.password
                     )
 
-                    self.app_password = hashlib.sha512(
-                        self.priv_key.encode()
-                    ).hexdigest()
+                    self.app_password = self.startup.get_app_password(
+                        self.priv_key
+                    )
 
                     # init db manager
                     self.db_manager.open(passphrase=self.app_password)
