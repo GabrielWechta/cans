@@ -161,11 +161,11 @@ class UserInterface:
 
         self.loop.create_task(self.view.render_all())
 
-        self.public_key: Optional[str] = None
+        self.self_user_id: Optional[str] = None
 
-    def set_public_key(self, key: str) -> None:
+    def set_self_user_id(self, key: str) -> None:
         """Set given key as identity user's public key."""
-        self.public_key = key
+        self.self_user_id = key
 
     def shutdown(self) -> None:
         """Shut down the user interface."""
@@ -280,7 +280,7 @@ class UserInterface:
 
     def command_share_pubkey(self) -> None:
         """Print and copy user's own public key."""
-        key = self.public_key
+        key = self.self_user_id
         pyperclip.copy(key)
 
         color = getattr(self.term, self.myself.color)

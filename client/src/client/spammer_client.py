@@ -6,7 +6,7 @@ from random import choice
 
 from olm import Account
 
-from common.keys import generate_keys
+from common.keys import digest_key, generate_keys
 
 from .session_manager_client import SessionManager
 
@@ -48,6 +48,8 @@ class SpammerClient:
 
         private_key, public_key = generate_keys()
         print(public_key)
+        print(private_key)
+        print("Key digest: \n" + digest_key(public_key))
 
         self.session_manager = SessionManager(
             keys=(private_key, public_key),
@@ -66,6 +68,7 @@ class SpammerClient:
                 ),
                 self._spam_service(peer_id),
                 self._cplane_sink(),
+                self._uplane_sink(),
             )
         )
 
@@ -80,9 +83,15 @@ class SpammerClient:
             await asyncio.sleep(5)
 
     async def _cplane_sink(self) -> None:
-        """Drop control messages received by the echo service."""
+        """Drop control messages received by the spammer service."""
         while True:
             message = await self.session_manager.receive_system_message()
+            message = message
+
+    async def _uplane_sink(self) -> None:
+        """Drop user messages received by the spammer service."""
+        while True:
+            message = await self.session_manager.receive_user_message()
             message = message
 
 

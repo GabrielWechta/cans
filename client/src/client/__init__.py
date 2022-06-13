@@ -139,7 +139,7 @@ class Client:
 
         # tell ui all is fine~
         self.ui.complete_startup()
-        self.ui.set_public_key(digest_key(self.pub_key))
+        self.ui.set_self_user_id(digest_key(self.pub_key))
 
         # rest of init
         self.echo_peer_id = (
