@@ -603,10 +603,6 @@ class UserInterface:
                             state=CansMessageState.NOT_DELIVERED.value,
                         )  # type: ignore
                         tile.reset_offset()
-                        self.view.add_message(
-                            tile.chat_with, new_message  # type: ignore
-                        )  # type: ignore
-
                         # pass the message to the client core
                         await self.input_callbacks["upstream_message"](
                             new_message

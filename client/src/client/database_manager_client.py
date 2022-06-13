@@ -113,10 +113,9 @@ class DatabaseManager:
         **kwargs: str,
     ) -> bool:
         """Update data of this friend."""
-        is_successful = 0
         if friend is not None:
             try:
-                is_successful = Friend.set_by_id(
+                rows_updated = Friend.set_by_id(
                     key=friend.id,
                     value={"username": friend.username, "color": friend.color},
                 )
@@ -128,7 +127,7 @@ class DatabaseManager:
                 return False
         elif kwargs and id:
             try:
-                is_successful = Friend.set_by_id(key=id, value=kwargs)
+                rows_updated = Friend.set_by_id(key=id, value=kwargs)
             except peewee.IntegrityError as e1:
                 self.log.error(
                     f"Failed to update friend with {id} key, because "
@@ -136,7 +135,7 @@ class DatabaseManager:
                 )
                 return False
 
-        if is_successful == 1:
+        if rows_updated == 1:
             return True
         else:
             self.log.error("Failed to update Friend data.")
@@ -145,9 +144,9 @@ class DatabaseManager:
     def remove_friend(self, id: str) -> bool:
         """Delete this friend's data."""
         try:
-            is_successful = Friend.delete_by_id(pk=id)
+            rows_updated = Friend.delete_by_id(pk=id)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(f"Failed to delete friend with {id} key.")
@@ -261,12 +260,11 @@ class DatabaseManager:
         **kwargs: str,
     ) -> bool:
         """Update the data of this message."""
-        is_successful = 0
         if date is None:
             date = datetime.now()
         if message is not None:
             try:
-                is_successful = Message.set_by_id(
+                rows_updated = Message.set_by_id(
                     key=message.id,
                     value={
                         "body": message.body,
@@ -284,7 +282,7 @@ class DatabaseManager:
                 return False
         elif id:
             try:
-                is_successful = Message.set_by_id(
+                rows_updated = Message.set_by_id(
                     key=id,
                     value={**kwargs, "date": date, "state": state.value},
                 )
@@ -295,7 +293,7 @@ class DatabaseManager:
                 )
                 return False
 
-        if is_successful == 1:
+        if rows_updated == 1:
             return True
         else:
             self.log.error("Failed to update this message in database.")
@@ -304,9 +302,9 @@ class DatabaseManager:
     def delete_message(self, id: str) -> bool:
         """Delete this message data."""
         try:
-            is_successful = Message.delete_by_id(pk=id)
+            rows_updated = Message.delete_by_id(pk=id)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(f"Failed to delete message {id} from database.")
@@ -327,7 +325,7 @@ class DatabaseManager:
             return True
 
         try:
-            is_successful = (
+            rows_updated = (
                 Message.delete()
                 .where(
                     (Message.from_user == friend) | (Message.to_user == friend)
@@ -335,7 +333,7 @@ class DatabaseManager:
                 .execute()
             )
 
-            if is_successful > 0:
+            if rows_updated > 0:
                 return True
             else:
                 self.log.debug(
@@ -381,10 +379,10 @@ class DatabaseManager:
     def update_setting(self, option: str, value: str) -> bool:
         """Update specified setting with provided value."""
         try:
-            is_successful = Setting.set_by_id(
+            rows_updated = Setting.set_by_id(
                 key=option, value={"value": value}
             )
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(
@@ -401,9 +399,9 @@ class DatabaseManager:
     def delete_setting(self, option: str) -> bool:
         """Remove this setting from the database."""
         try:
-            is_successful = Setting.delete_by_id(pk=option)
+            rows_updated = Setting.delete_by_id(pk=option)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(

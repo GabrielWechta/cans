@@ -256,22 +256,21 @@ class Client:
                     payload, message.payload["peer"]
                 )
             elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
-                original_message = self.db_manager.get_message(
-                    id=message.payload["cookie"]
+                self.ui.view.update_message_status(
+                    chat_with=message.header.sender,
+                    id=message.payload["cookie"],
+                    status=CansMessageState.DELIVERED,
                 )
-                if original_message is not None:
-                    self.log.debug(
-                        f"Chat to update: {original_message.to_user}"
-                    )
-                    self.ui.view.update_message_status(
-                        chat_with=original_message.to_user,
-                        id=message.payload["cookie"],
-                        status=CansMessageState.DELIVERED,
-                    )
-                    self.db_manager.update_message(
-                        id=message.payload["cookie"],
-                        date=original_message.date,
-                        state=CansMessageState.DELIVERED,
+                is_successful = self.db_manager.update_message(
+                    id=message.payload["cookie"],
+                    state=CansMessageState.DELIVERED,
+                )
+                # potential malicious ack message
+                if not is_successful:
+                    self.log.error(
+                        "Unexpected ACK for message "
+                        + f"{message.payload['cookie']} from "
+                        + f"{message.header.sender}"
                     )
             elif message.header.msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
                 payload = Terminal().silver("User is unavailable")
@@ -292,6 +291,9 @@ class Client:
         )
         message_model.id = cookie
         self.db_manager.save_message(message_model)
+        self.ui.view.add_message(
+            receiver, message_model  # type: ignore
+        )  # type: ignore
 
         self.log.debug(
             f"Sending message to {message.header.receiver}"
@@ -335,4 +337,4 @@ class Client:
 
         logger.setLevel(logging.INFO)
         # NOTE: Uncomment to enable debug logging during development
-        logger.setLevel(logging.DEBUG)
+        # logger.setLevel(logging.DEBUG)
