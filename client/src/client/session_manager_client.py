@@ -23,8 +23,12 @@ from common.messages import (
     CansMessageException,
     CansMsgId,
     GetOneTimeKeyReq,
+    GetOneTimeKeyResp,
     NackMessageNotDelivered,
     PeerHello,
+    PeerLogin,
+    PeerLogout,
+    ReplenishOneTimeKeysReq,
     ReplenishOneTimeKeysResp,
     RequestLogoutNotif,
     SchnorrChallenge,
@@ -34,6 +38,7 @@ from common.messages import (
     UserMessage,
     cans_recv,
     cans_send,
+    check_payload,
 )
 
 from .e2e_encryption import TripleDiffieHellmanInterface
@@ -354,6 +359,7 @@ class SessionManager:
 
     async def _handle_message_user_message(self, message: CansMessage) -> None:
         """Handle message type USER_MESSAGE."""
+        check_payload(message, UserMessage)
         sender = message.header.sender
 
         if sender in self.session_sm.active_sessions.keys():
@@ -372,6 +378,7 @@ class SessionManager:
 
     async def _handle_message_peer_hello(self, message: CansMessage) -> None:
         """Handle message type PEER_HELLO."""
+        check_payload(message, PeerHello)
         peer = message.header.sender
         self.log.debug(f"Handling PEER_HELLO message from '{peer}'...")
 
@@ -416,6 +423,7 @@ class SessionManager:
 
     async def _handle_message_peer_login(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGIN."""
+        check_payload(message, PeerLogin)
         peer = message.payload["peer"]
         identity_key, one_time_key = message.payload["public_keys_bundle"]
         self.log.info(f"'{peer}' just logged in!")
@@ -428,6 +436,7 @@ class SessionManager:
 
     async def _handle_message_peer_logout(self, message: CansMessage) -> None:
         """Handle message type PEER_LOGOUT."""
+        check_payload(message, PeerLogout)
         peer = message.payload["peer"]
         self.session_sm.terminate_session(peer)
 
@@ -438,6 +447,7 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type ACK_MESSAGE_DELIVERED."""
+        check_payload(message, AckMessageDelivered)
         cookie = message.payload["cookie"]
         sender = message.header.sender
         self.log.debug(
@@ -449,6 +459,7 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type NACK_MESSAGE_NOT_DELIVERED."""
+        check_payload(message, NackMessageNotDelivered)
         sender = message.header.sender
         peer = message.payload["message_target"]
         reason = message.payload["reason"]
@@ -482,6 +493,7 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
+        check_payload(message, ReplenishOneTimeKeysReq)
         count = message.payload["count"]
         self.log.debug(
             f"Received a request to replenish {count} one-time keys"
@@ -498,6 +510,7 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type SESSION_ESTABLISHED."""
+        check_payload(message, SessionEstablished)
         peer = message.header.sender
         self.log.debug(
             f"Handling message SESSION_ESTABLISHED from '{peer}'..."
@@ -521,6 +534,7 @@ class SessionManager:
         self, message: CansMessage
     ) -> None:
         """Handle message type GET_ONE_TIME_KEY_RESP."""
+        check_payload(message, GetOneTimeKeyResp)
         peer = message.payload["peer"]
         identity_key, one_time_key = message.payload["public_keys_bundle"]
         self.session_sm.add_potential_session(

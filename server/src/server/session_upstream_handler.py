@@ -5,12 +5,18 @@ from typing import Callable, Dict
 
 from common.connection import CansStatusCode
 from common.messages import (
+    AddFriend,
     CansMalformedMessageError,
     CansMessage,
     CansMessageException,
     CansMsgId,
+    GetOneTimeKeyReq,
     GetOneTimeKeyResp,
+    NackMessageNotDelivered,
+    ReplenishOneTimeKeysResp,
+    RequestLogoutNotif,
     cans_recv,
+    check_payload,
 )
 from server.client_session import ClientSession
 from server.database_manager_server import DatabaseManager
@@ -123,6 +129,7 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type ADD_FRIEND."""
+        check_payload(message, AddFriend)
         peer = message.payload["friend"]
         self.log.debug(f"User {session.user_id} added friend {peer}")
         session.subscriptions.add(peer)
@@ -144,6 +151,7 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type NACK_MESSAGE_NOT_DELIVERED."""
+        check_payload(message, NackMessageNotDelivered)
         # User traffic - route it provided the payload is not malicious
         sender = message.header.sender
         message_target = message.payload["message_target"]
@@ -158,6 +166,7 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type REQUEST_LOGOUT_NOTIF."""
+        check_payload(message, RequestLogoutNotif)
         peer = message.payload["peer"]
 
         self.log.debug(
@@ -188,6 +197,7 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type REPLENISH_ONE_TIME_KEYS_REQ."""
+        check_payload(message, ReplenishOneTimeKeysResp)
         keys = message.payload["keys"]
         self.log.debug(
             f"User '{session.user_id}' replenished"
@@ -201,6 +211,7 @@ class SessionUpstreamHandler:
         self, message: CansMessage, session: ClientSession
     ) -> None:
         """Handle message type GET_ONE_TIME_KEY_REQ."""
+        check_payload(message, GetOneTimeKeyReq)
         peer = message.payload["peer"]
 
         if peer in self.sessions.keys():

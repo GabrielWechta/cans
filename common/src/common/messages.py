@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import IntEnum, auto, unique
 from json import JSONDecodeError, JSONDecoder, JSONEncoder
 from random import random
-from typing import Any, Dict, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Type, Union
 
 from websockets.client import WebSocketClientProtocol
 from websockets.server import WebSocketServerProtocol
@@ -380,8 +380,23 @@ async def cans_send(
 
 def get_user_message_cookie(receiver: str, text: str) -> str:
     """Digest user message to produce a unique token."""
-    hash_input = receiver + text + str(datetime.now()) + str(random())
+    hash_input = (
+        str(receiver) + str(text) + str(datetime.now()) + str(random())
+    )
     return hashlib.sha256(hash_input.encode()).hexdigest()
+
+
+def check_payload(msg: CansMessage, message_type: Type) -> None:
+    """Check if the payload is as expected."""
+    # Hacks so dirty I need a shower
+    argc = message_type.__init__.__code__.co_argcount - 1
+    argv: List[Any] = [[]] * argc
+    expected_keys = message_type(*argv).__dict__["payload"].keys()
+    actual_keys = msg.payload.keys()
+    if actual_keys != expected_keys:
+        raise CansMalformedMessageError(
+            f"Malformed payload of message {message_type.__name__}"
+        )
 
 
 def __serialize(msg: CansMessage) -> CansSerial:
