@@ -73,10 +73,15 @@ class Client:
             self.priv_key, self.pub_key = self.startup.load_key_pair(
                 self.password
             )
-            self.account = self.startup.create_crypto_account(user_passphrase)
+
+            self.app_password = self.startup.get_app_password(self.priv_key)
+
+            self.account = self.startup.create_crypto_account(
+                self.app_password
+            )
 
             # init db manager
-            self.db_manager.open(passphrase=self.password)
+            self.db_manager.open(passphrase=self.app_password)
 
             # Initialize system and myself in the database
             self.system = self.db_manager.add_friend(
@@ -125,14 +130,18 @@ class Client:
                         self.password
                     )
 
+                    self.app_password = self.startup.get_app_password(
+                        self.priv_key
+                    )
+
                     # init db manager
-                    self.db_manager.open(passphrase=self.password)
+                    self.db_manager.open(passphrase=self.app_password)
 
                     self.system = self.db_manager.get_friend(id="system")
                     self.myself = self.db_manager.get_friend(id="myself")
 
                     self.account = self.startup.load_crypto_account(
-                        user_passphrase
+                        self.app_password
                     )
 
                 except ValueError as e:
