@@ -9,7 +9,6 @@ from pathlib import Path
 from shutil import rmtree
 
 from Cryptodome.Cipher import AES, _mode_gcm
-from Cryptodome.Util.Padding import pad, unpad
 from olm import Account
 
 from common.keys import (
@@ -32,6 +31,7 @@ class Startup:
         """Intialize application data paths."""
         self._home_dir = Path.home() / ".cans"
         self._keys_dir = self._home_dir / "keys"
+        self._backups_dir = self._home_dir / "backups"
         self.db_path = self._home_dir / "user_data.db"
         self.user_private_key_path = self._keys_dir / "priv.pem"
         self.crypto_account_path = self._home_dir / "crypto_account"
@@ -43,6 +43,7 @@ class Startup:
         rmtree(path=self._home_dir, ignore_errors=True)
         mkdir(self._home_dir, mode=0o700)
         mkdir(self._keys_dir, mode=0o700)
+        mkdir(self._backups_dir, mode=0o700)
 
     def is_first_startup(self) -> bool:
         """Check if user's EC EcPemKeyPair exists."""
@@ -101,10 +102,47 @@ class Startup:
         ).hexdigest()
 
     def get_key(self, passphrase: str = "") -> str:
-        """Derive AES key based on argon2 hash of hwf and passphrase."""
+        """Derive AES key based on hash of hwf and passphrase."""
         return hashlib.sha256(
             (self._hardware_fingerprint() + passphrase).encode("utf-8")
         ).hexdigest()
+
+    def _encrypt(self, key: str, plaintext: str) -> bytes:
+        """Use AES-GCM to encrypt a given plaintext."""
+        key_bytes = bytes.fromhex(key)
+        data = plaintext.encode()
+
+        cipher = AES.new(key_bytes, AES.MODE_GCM)
+        assert isinstance(cipher, _mode_gcm.GcmMode)
+
+        ciphertext, tag = cipher.encrypt_and_digest(data)
+
+        return cipher.nonce + tag + ciphertext
+
+    def _decrypt(self, key: str, ciphertext: bytes) -> str:
+        """Use AES-GCM to decrypt a given ciphertext."""
+        key_bytes = bytes.fromhex(key)
+
+        cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=ciphertext[:16])
+        assert isinstance(cipher, _mode_gcm.GcmMode)
+
+        plaintext = cipher.decrypt_and_verify(
+            ciphertext=ciphertext[32:], received_mac_tag=ciphertext[16:32]
+        )
+
+        return plaintext.decode()
+
+    def encrypt_on_disk(self, plaintext: str, path: str, key: str) -> None:
+        """Encrypt given plaintext and store it in a file."""
+        with open(path, "wb") as enc_file:
+            ciphertext = self._encrypt(key=key, plaintext=plaintext)
+            enc_file.write(ciphertext)
+
+    def decrypt_from_disk(self, path: str, key: str) -> str:
+        """Decrypt data from a given file and return it."""
+        with open(path, "rb") as enc_file:
+            ciphertext = enc_file.read()
+            return self._decrypt(key=key, ciphertext=ciphertext)
 
     def generate_private_key(self, password: str) -> None:
         """Run Cryptodome to generate EC private key.
@@ -114,34 +152,20 @@ class Startup:
         priv_key, _ = generate_keys()
 
         # Encrypt private key with AES-GCM using password
-        with open(self.user_private_key_path, "wb") as private_key_file:
-            cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_GCM)
-            enc_priv_key = cipher.encrypt(
-                pad(priv_key.encode("utf-8"), AES.block_size)
-            )
-            if isinstance(cipher, _mode_gcm.GcmMode):
-                # Save tag at the beginning of the file
-                private_key_file.write(cipher.nonce)
-            private_key_file.write(enc_priv_key)
-
-    def _decrypt_private_key(self, password: str) -> str:
-        """Decrypt the private key."""
-        # Read private key from file
-        with open(self.user_private_key_path, "rb") as private_key_file:
-            iv = private_key_file.read(16)
-            enc_priv_key = private_key_file.read()
-
-        cipher = AES.new(password.encode("utf-8")[:32], AES.MODE_GCM, nonce=iv)
-        return unpad(cipher.decrypt(enc_priv_key), AES.block_size).decode(
-            "utf8"
+        self.encrypt_on_disk(
+            plaintext=priv_key,
+            path=str(self.user_private_key_path),
+            key=password,
         )
 
     def load_key_pair(self, password: str) -> EcPemKeyPair:
         """Decrypt and verify if private key is correct.
 
-        Regenerate keys if private key is corrupted. Return both keys.
+        Return private and public key.
         """
-        priv_key = self._decrypt_private_key(password)
+        priv_key = self.decrypt_from_disk(
+            path=str(self.user_private_key_path), key=password
+        )
         # Check it's a valid EC key
         get_private_key_from_pem(priv_key)
         pub_key = get_public_key_pem(priv_key)
