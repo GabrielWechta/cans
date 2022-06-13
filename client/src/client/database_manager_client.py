@@ -22,17 +22,11 @@ class DatabaseManager:
         self.log = logging.getLogger("cans-logger")
         self._db_name = str(name)
 
-    def open(self, passphrase: str = "") -> Optional[str]:
+    def open(self, passphrase: str = "") -> None:
         """Set up the connection with application's database."""
         self.db = SqlCipherDatabase(self._db_name, passphrase=passphrase)
-        try:
-            db_proxy.initialize(self.db)
-            self.db.create_tables([Friend, Message, Setting])
-        except peewee.DatabaseError as e:
-            if str(e) == "file is encrypted or is not a database":
-                return "Wrong password"
-            else:
-                return str(e)
+        db_proxy.initialize(self.db)
+        self.db.create_tables([Friend, Message, Setting])
         self.log.debug("Successfully initialized database connection.")
         return None
 
@@ -62,7 +56,7 @@ class DatabaseManager:
                 try:
                     self.log.error(
                         f"Failed to save {friend.username} to the database, "
-                        + f"because {e.message}."
+                        + f"because {e}."
                     )
                     return Friend.get(id=friend.id)
                 except peewee.DoesNotExist:
@@ -119,22 +113,21 @@ class DatabaseManager:
         **kwargs: str,
     ) -> bool:
         """Update data of this friend."""
-        is_successful = 0
         if friend is not None:
             try:
-                is_successful = Friend.set_by_id(
+                rows_updated = Friend.set_by_id(
                     key=friend.id,
                     value={"username": friend.username, "color": friend.color},
                 )
             except peewee.IntegrityError as e:
                 self.log.error(
                     f"Failed to update {friend.username}'s data, because "
-                    + f"{e.message}."
+                    + f"{e}."
                 )
                 return False
         elif kwargs and id:
             try:
-                is_successful = Friend.set_by_id(key=id, value=kwargs)
+                rows_updated = Friend.set_by_id(key=id, value=kwargs)
             except peewee.IntegrityError as e1:
                 self.log.error(
                     f"Failed to update friend with {id} key, because "
@@ -142,7 +135,7 @@ class DatabaseManager:
                 )
                 return False
 
-        if is_successful == 1:
+        if rows_updated == 1:
             return True
         else:
             self.log.error("Failed to update Friend data.")
@@ -151,9 +144,9 @@ class DatabaseManager:
     def remove_friend(self, id: str) -> bool:
         """Delete this friend's data."""
         try:
-            is_successful = Friend.delete_by_id(pk=id)
+            rows_updated = Friend.delete_by_id(pk=id)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(f"Failed to delete friend with {id} key.")
@@ -167,7 +160,7 @@ class DatabaseManager:
     def save_message(
         self,
         message: Message = None,
-        state: CansMessageState = CansMessageState.DELIVERED,
+        state: CansMessageState = CansMessageState.NOT_DELIVERED,
         date: datetime = None,
         **kwargs: str,
     ) -> Optional[Message]:
@@ -183,7 +176,7 @@ class DatabaseManager:
                     id=message.id,
                     body=message.body,
                     date=message.date,
-                    state=state,
+                    state=state.value,
                     from_user=message.from_user.id,
                     to_user=message.to_user.id,
                 )
@@ -204,7 +197,7 @@ class DatabaseManager:
             try:
                 return Message.create(
                     date=date,
-                    state=state,
+                    state=state.value,
                     **kwargs,
                 )
             except peewee.IntegrityError as e1:
@@ -218,7 +211,7 @@ class DatabaseManager:
                     else:
                         self.log.error(
                             f"Unable to save {kwargs['body']} to database, "
-                            + f"because {e1.message}."
+                            + f"because {e1}."
                         )
                         return None
                 except peewee.DoesNotExist:
@@ -261,23 +254,22 @@ class DatabaseManager:
     def update_message(
         self,
         message: Message = None,
-        state: CansMessageState = CansMessageState.DELIVERED,
+        state: CansMessageState = CansMessageState.NOT_DELIVERED,
         date: datetime = None,
         id: str = "",
         **kwargs: str,
     ) -> bool:
         """Update the data of this message."""
-        is_successful = 0
         if date is None:
             date = datetime.now()
         if message is not None:
             try:
-                is_successful = Message.set_by_id(
+                rows_updated = Message.set_by_id(
                     key=message.id,
                     value={
                         "body": message.body,
                         "date": date,
-                        "state": state,
+                        "state": state.value,
                         "from_user": message.from_user,
                         "to_user": message.to_user,
                     },
@@ -290,8 +282,9 @@ class DatabaseManager:
                 return False
         elif id:
             try:
-                is_successful = Message.set_by_id(
-                    key=id, value={**kwargs, "date": date, "state": state}
+                rows_updated = Message.set_by_id(
+                    key=id,
+                    value={**kwargs, "date": date, "state": state.value},
                 )
             except peewee.IntegrityError as e1:
                 self.log.error(
@@ -300,7 +293,7 @@ class DatabaseManager:
                 )
                 return False
 
-        if is_successful == 1:
+        if rows_updated == 1:
             return True
         else:
             self.log.error("Failed to update this message in database.")
@@ -309,9 +302,9 @@ class DatabaseManager:
     def delete_message(self, id: str) -> bool:
         """Delete this message data."""
         try:
-            is_successful = Message.delete_by_id(pk=id)
+            rows_updated = Message.delete_by_id(pk=id)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(f"Failed to delete message {id} from database.")
@@ -332,7 +325,7 @@ class DatabaseManager:
             return True
 
         try:
-            is_successful = (
+            rows_updated = (
                 Message.delete()
                 .where(
                     (Message.from_user == friend) | (Message.to_user == friend)
@@ -340,7 +333,7 @@ class DatabaseManager:
                 .execute()
             )
 
-            if is_successful > 0:
+            if rows_updated > 0:
                 return True
             else:
                 self.log.debug(
@@ -386,10 +379,10 @@ class DatabaseManager:
     def update_setting(self, option: str, value: str) -> bool:
         """Update specified setting with provided value."""
         try:
-            is_successful = Setting.set_by_id(
+            rows_updated = Setting.set_by_id(
                 key=option, value={"value": value}
             )
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(
@@ -406,9 +399,9 @@ class DatabaseManager:
     def delete_setting(self, option: str) -> bool:
         """Remove this setting from the database."""
         try:
-            is_successful = Setting.delete_by_id(pk=option)
+            rows_updated = Setting.delete_by_id(pk=option)
 
-            if is_successful == 1:
+            if rows_updated == 1:
                 return True
             else:
                 self.log.error(

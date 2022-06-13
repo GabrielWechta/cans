@@ -2,6 +2,7 @@
 
 import getpass
 import hashlib
+import logging
 import subprocess
 from os import mkdir, path
 from pathlib import Path
@@ -32,9 +33,10 @@ class Startup:
         self._home_dir = Path.home() / ".cans"
         self._keys_dir = self._home_dir / "keys"
         self.db_path = self._home_dir / "user_data.db"
-        self.user_public_key_path = self._keys_dir / "pub.pem"
         self.user_private_key_path = self._keys_dir / "priv.pem"
         self.crypto_account_path = self._home_dir / "crypto_account"
+
+        self.log = logging.getLogger("cans-logger")
 
     def cans_setup(self) -> None:
         """Create all necessary directories."""
@@ -73,20 +75,23 @@ class Startup:
         try:
             drive_UUID = str(
                 subprocess.check_output(
-                    "/usr/bin/blkid -s UUID -o value | /usr/bin/head -n 1"
+                    "/usr/bin/blkid -s UUID -o value | /usr/bin/head -n 1",
+                    shell=True,
                 )
             )
             cpu_model = str(
                 subprocess.check_output(
                     "/usr/bin/lscpu | /usr/bin/grep 'Model name' "
                     + "| /usr/bin/cut -f 2 -d ':' "
-                    + "| /usr/bin/awk '{$1=$1}1'"
+                    + "| /usr/bin/awk '{$1=$1}1'",
+                    shell=True,
                 )
             )
             username = getpass.getuser()
-        except Exception:
+        except Exception as e:
             # If in docker container and no devices present
             # use default placeholder values.
+            self.log.error(f"HWF derivation error: {str(e)}")
             drive_UUID = "3255683f-53a2-4fdf-91cf-b4c1041e2a62"
             cpu_model = "Intel(R) Core(TM) i7-10870H CPU @ 2.20GHz"
             username = "eve"
@@ -136,20 +141,9 @@ class Startup:
 
         Regenerate keys if private key is corrupted. Return both keys.
         """
-        pub_key = ""
-        priv_key = ""
-
-        try:
-            # Check if padding is correct
-            priv_key = self._decrypt_private_key(password)
-            # Check it's a valid EC key
-            get_private_key_from_pem(priv_key)
-        except ValueError:
-            # Corrupted key so generate new key pair
-            # TODO Figure out if this is correct approach
-            self.generate_private_key(password)
-            priv_key = self._decrypt_private_key(password)
-
+        priv_key = self._decrypt_private_key(password)
+        # Check it's a valid EC key
+        get_private_key_from_pem(priv_key)
         pub_key = get_public_key_pem(priv_key)
 
         return priv_key, pub_key

@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 
 from blessed import Terminal
+from olm import OlmAccountError
+from peewee import DatabaseError
 
 from common.keys import digest_key
 from common.messages import CansMsgId
@@ -99,6 +101,7 @@ class Client:
         else:
             # TODO: this while loop
             feedback = ""
+            retries = 3
 
             while True:
                 user_passphrase = self.ui.blocking_prompt(
@@ -116,19 +119,43 @@ class Client:
                     assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
-                self.priv_key, self.pub_key = self.startup.load_key_pair(
-                    self.password
-                )
-                self.account = self.startup.load_crypto_account(
-                    user_passphrase
-                )
 
-                # init db manager
-                self.db_manager.open(passphrase=self.password)
+                try:
+                    self.priv_key, self.pub_key = self.startup.load_key_pair(
+                        self.password
+                    )
 
-                # TODO: some error handling might be useful here
-                self.system = self.db_manager.get_friend(id="system")
-                self.myself = self.db_manager.get_friend(id="myself")
+                    # init db manager
+                    self.db_manager.open(passphrase=self.password)
+
+                    self.system = self.db_manager.get_friend(id="system")
+                    self.myself = self.db_manager.get_friend(id="myself")
+
+                    self.account = self.startup.load_crypto_account(
+                        user_passphrase
+                    )
+
+                except ValueError as e:
+                    # Corrupted keys or wrong password
+                    if retries > 0:
+                        retries = retries - 1
+                        feedback = "Wrong password."
+                        continue
+                    else:
+                        self.log.critical(f"Can't decrypt keys: {e}")
+                        self.event_loop.run_until_complete(
+                            self._do_graceful_shutdown()
+                        )
+                except DatabaseError as e1:
+                    self.log.critical(f"Database Error: {e1}")
+                    self.event_loop.run_until_complete(
+                        self._do_graceful_shutdown()
+                    )
+                except OlmAccountError as e2:
+                    self.log.critical(f"Corrupted OlmAccount: {e2}")
+                    self.event_loop.run_until_complete(
+                        self._do_graceful_shutdown()
+                    )
 
                 break
 
@@ -231,8 +258,22 @@ class Client:
                     payload, message.payload["peer"]
                 )
             elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
-                # TODO: Handle delivery acknowledge
-                pass
+                self.ui.view.update_message_status(
+                    chat_with=message.header.sender,
+                    id=message.payload["cookie"],
+                    status=CansMessageState.DELIVERED,
+                )
+                is_successful = self.db_manager.update_message(
+                    id=message.payload["cookie"],
+                    state=CansMessageState.DELIVERED,
+                )
+                # potential malicious ack message
+                if not is_successful:
+                    self.log.error(
+                        "Unexpected ACK for message "
+                        + f"{message.payload['cookie']} from "
+                        + f"{message.header.sender}"
+                    )
             elif message.header.msg_id == CansMsgId.NACK_MESSAGE_NOT_DELIVERED:
                 payload = Terminal().silver("User is unavailable")
                 self.ui.on_system_message_received(
@@ -250,8 +291,11 @@ class Client:
         message, cookie = self.session_manager.user_message_to(
             receiver.id, message_model.body
         )
-
-        # TODO: Use the cookie to find corresponding acknowledge later
+        message_model.id = cookie
+        self.db_manager.save_message(message_model)
+        self.ui.view.add_message(
+            receiver, message_model  # type: ignore
+        )  # type: ignore
 
         self.log.debug(
             f"Sending message to {message.header.receiver}"
@@ -270,6 +314,7 @@ class Client:
             self.db_manager.close()
         self.log.info("Hanging the 'closed' sign in the window...")
         self.ui.shutdown()
+        self.log.info("Bye, bye...")
         os._exit(0)
 
     def _do_logger_config(self) -> None:

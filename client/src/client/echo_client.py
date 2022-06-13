@@ -55,14 +55,13 @@ ksLiCIUdTgUnbpVQm7sZQnc54QPzNZGPbxZe7BPhzlNhnuQyHDZ/0Ij6QA==
     async def _echo_service(self) -> None:
         """Implement the echo service."""
         while True:
-            message = await self.session_manager.receive_user_message()
-            # Swap sender and receiver
-            sender = message.header.sender
-            receiver = message.header.receiver
-            message.header.sender = receiver
-            message.header.receiver = sender
+            request = await self.session_manager.receive_user_message()
             # Echo the message back
-            await self.session_manager.send_message(message)
+            sender = request.header.sender
+            response, _ = self.session_manager.user_message_to(
+                sender, request.payload["text"]
+            )
+            await self.session_manager.send_message(response)
 
     async def _cplane_sink(self) -> None:
         """Drop control messages received by the echo service."""
