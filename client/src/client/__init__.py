@@ -8,6 +8,7 @@ from datetime import datetime
 
 from blessed import Terminal
 
+from common.keys import digest_key
 from common.messages import CansMsgId
 
 from .database_manager_client import DatabaseManager
@@ -138,6 +139,7 @@ class Client:
 
         # tell ui all is fine~
         self.ui.complete_startup()
+        self.ui.set_self_user_id(digest_key(self.pub_key))
 
         # rest of init
         self.echo_peer_id = (

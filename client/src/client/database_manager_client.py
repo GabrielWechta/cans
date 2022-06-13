@@ -101,7 +101,7 @@ class DatabaseManager:
         try:
             return Friend.get_by_id(pk=id)
         except peewee.DoesNotExist:
-            self.log.error(f"No friend with {id} key in database.")
+            self.log.debug(f"No friend with {id} key in database.")
             return None
 
     def get_all_friends(self) -> list:
@@ -249,7 +249,7 @@ class DatabaseManager:
         try:
             friend = Friend.get(Friend.id == id)
         except peewee.DoesNotExist:
-            self.log.error(f"There's no friend with {id} key in the database.")
+            self.log.debug(f"There's no friend with {id} key in the database.")
             return []
 
         return list(

@@ -19,11 +19,24 @@ services:
   cans-echo-service:
     build:
       context: .
-      target: client_echo
+      target: client
     container_name: cans-echo-service
     depends_on:
       - cans-server
     command: python -u -m client.echo_client
+    env_file:
+      - .env
+    networks:
+      - cans-network
+
+  cans-spammer-service:
+    build:
+      context: .
+      target: client
+    container_name: cans-spammer-service
+    depends_on:
+      - cans-server
+    command: python -u -m client.spammer_client
     env_file:
       - .env
     networks:

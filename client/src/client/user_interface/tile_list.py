@@ -13,10 +13,11 @@ class TileList:
     i.e. focusing, changing places etc.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, change_focus_on_add: bool) -> None:
         """Init the tileList."""
         self.current_id = 0
         self.tiles: List[Tile] = []
+        self.change_focus_on_add = change_focus_on_add
 
     @property
     def current_index(self) -> int:
@@ -101,7 +102,8 @@ class TileList:
                 self.tiles.insert(pos, tile)
             else:
                 self.tiles.append(tile)
-        self.current_tile = tile
+        if self.change_focus_on_add or len(self.tiles) == 0:
+            self.current_tile = tile
 
     def append_head(self, tile: Tile) -> None:
         """Append the given tile in front of list."""
