@@ -80,6 +80,7 @@ class Startup:
                 subprocess.check_output(
                     "/usr/bin/blkid -s UUID /dev/sda*",
                     shell=True,
+                    stderr=subprocess.DEVNULL,
                 )
             )
             drive_UUID = drive_UUIDs.splitlines()[0][-40:-4]
@@ -89,6 +90,7 @@ class Startup:
             output = subprocess.check_output(
                 "/usr/bin/lscpu -J",
                 shell=True,
+                stderr=subprocess.DEVNULL,
             ).decode()
             cpu_info = json.loads(output)
             cpu_model = cpu_info["lscpu"][7]["data"]
