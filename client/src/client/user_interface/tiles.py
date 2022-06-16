@@ -411,8 +411,7 @@ class InputTile(Tile):
         # basically run forever
         while True:
             with term.raw():
-                # TODO: implement timeout to have refresh functionality
-                val = term.inkey(0.2)
+                val = term.inkey(0.1)
 
                 if self._terminate:
                     break
