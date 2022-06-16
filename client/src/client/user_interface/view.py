@@ -8,7 +8,6 @@ import concurrent
 import logging
 import signal
 from datetime import datetime
-from threading import Event
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
@@ -38,8 +37,6 @@ class View:
         self.db_manager = db_manager
 
         self.log = logging.getLogger("cans-logger")
-
-        self.on_resize_event = Event()
 
         # set identity
         self.myself = Friend()
@@ -75,7 +72,6 @@ class View:
                 self.footer.input,  # noqa: FKA01
                 self.term,  # noqa: FKA01
                 self.loop,  # noqa: FKA01
-                self.on_resize_event,  # noqa: FKA01
             )  # noqa: FKA01
         )  # noqa: FKA01
 
@@ -164,7 +160,7 @@ class View:
 
         self.loop.create_task(self.layout.render_all())
         self.loop.create_task(self.header.render(self.term))
-        self.on_resize_event.set()
+        self.loop.create_task(self.footer.on_resize(self.term))
 
     def add_chat(self, chat_with: Union[Friend, str]) -> None:
         """Add a chat tile with a given user."""
