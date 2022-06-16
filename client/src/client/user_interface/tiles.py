@@ -341,7 +341,23 @@ class InputTile(Tile):
         self.input_queue: Queue = Queue()
         self.prompt_position = math.floor(self.real_height / 2)
 
+        self.mask_input = False
         self.mode = InputMode.NORMAL
+
+    @property
+    def allow_commands(self) -> bool:
+        """Check whether command mode is allowed."""
+        if self.mask_input:
+            return False
+        else:
+            return True
+
+    def set_input_masking(self, mask_input: bool) -> None:
+        """Set input masking on or off.
+
+        If input masking is on, input will be masked with '*' characters.
+        """
+        self.mask_input = mask_input
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins etc."""
@@ -374,7 +390,7 @@ class InputTile(Tile):
         self.y = t.height - self.height
 
         await self.render(t)
-        await self.display_prompt(t)
+        await self.display_input(t)
 
     def input(self, term: Terminal, loop: BaseEventLoop) -> None:
         """Input function, kinda better edition."""
@@ -420,11 +436,15 @@ class InputTile(Tile):
                 if self.mode == InputMode.NORMAL:
                     if val.code == term.KEY_ESCAPE:
                         self.mode = InputMode.LAYOUT
-                    elif val == "/" and self.input_text == "":
+                    elif (
+                        val == "/"
+                        and self.input_text == ""
+                        and self.allow_commands
+                    ):
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
                         run_coroutine_threadsafe(
-                            self.display_prompt(term, "/" + self.input_text),
+                            self.display_input(term, "/" + self.input_text),
                             loop,
                         )
                     else:
@@ -459,17 +479,19 @@ class InputTile(Tile):
                         elif self.input_filter(val):
                             self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_prompt(term), loop
+                            self.display_input(term), loop
                         )
                 # if layout mode
                 elif self.mode == InputMode.LAYOUT:
                     if val.code == term.KEY_ENTER:
                         self.mode = InputMode.NORMAL
-                    elif val == "/":
+                    elif val == "/" and self.allow_commands:
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
 
-                        run_coroutine_threadsafe(self.clear_input(term), loop)
+                        run_coroutine_threadsafe(
+                            self.display_input(term, "/"), loop
+                        )
                     else:
                         if self.input_filter(val) or not val.code:
                             run_coroutine_threadsafe(
@@ -534,18 +556,17 @@ class InputTile(Tile):
                         elif self.input_filter(val):
                             self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_prompt(term, "/" + self.input_text),
+                            self.display_input(term, "/" + self.input_text),
                             loop,
                         )
-        # print(term.exit_fullscreen, end="")
 
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""
         text = ""
 
-        await self.display_prompt(t, text)
+        await self.display_input(t, text)
 
-    async def display_prompt(self, t: Terminal, text: str = None) -> None:
+    async def display_input(self, t: Terminal, text: str = None) -> None:
         """Display text in the input prompt."""
         prompt_location = self.prompt_location()
         x_pos = prompt_location[0] - t.length(self.prompt)
@@ -553,6 +574,10 @@ class InputTile(Tile):
 
         if text is None:
             text = self.input_text
+
+        # handle input masking, for example when typing password
+        if self.mask_input:
+            text = "*" * t.length(text) if t.length(text) > 1 else ""
 
         with t.hidden_cursor():
             print(t.move_xy(x_pos, y_pos), end="")

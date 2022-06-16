@@ -95,6 +95,13 @@ class View:
         # render the screen
         loop.run_until_complete(self.render_all())
 
+    def set_input_masking(self, mask_input: bool) -> None:
+        """Set input masking on or off.
+
+        If input masking is on, input will be masked with '*' characters.
+        """
+        self.footer.set_input_masking(mask_input)
+
     def set_identity_user(self, identity: Friend) -> None:
         """Set given Friend as myself."""
         self.myself = identity
