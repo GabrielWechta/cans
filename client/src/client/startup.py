@@ -2,6 +2,7 @@
 
 import getpass
 import hashlib
+import json
 import logging
 import subprocess
 from os import mkdir, path
@@ -74,25 +75,33 @@ class Startup:
         username of os user account.
         """
         try:
-            drive_UUID = str(
+            # Extract UUID of user's hard drive
+            drive_UUIDs = str(
                 subprocess.check_output(
-                    "/usr/bin/blkid -s UUID -o value | /usr/bin/head -n 1",
+                    "/usr/bin/blkid -s UUID /dev/sda*",
                     shell=True,
                 )
             )
-            cpu_model = str(
-                subprocess.check_output(
-                    "/usr/bin/lscpu | /usr/bin/grep 'Model name' "
-                    + "| /usr/bin/cut -f 2 -d ':' "
-                    + "| /usr/bin/awk '{$1=$1}1'",
-                    shell=True,
-                )
-            )
+            drive_UUID = drive_UUIDs.splitlines()[0][-40:-4]
+            self.log.debug(f"Drive UUID: {drive_UUID}")
+
+            # parse lscpu output to get CPU model
+            output = subprocess.check_output(
+                "/usr/bin/lscpu -J",
+                shell=True,
+            ).decode()
+            cpu_info = json.loads(output)
+            cpu_model = cpu_info["lscpu"][7]["data"]
+            self.log.debug(f"CPU Model: {cpu_model}")
+
             username = getpass.getuser()
+            self.log.debug(f"Username: {username}")
         except Exception as e:
             # If in docker container and no devices present
             # use default placeholder values.
-            self.log.error(f"HWF derivation error: {str(e)}")
+            self.log.error(
+                f"HWF derivation error: ({type(e).__name__}): {str(e)}"
+            )
             drive_UUID = "3255683f-53a2-4fdf-91cf-b4c1041e2a62"
             cpu_model = "Intel(R) Core(TM) i7-10870H CPU @ 2.20GHz"
             username = "eve"
