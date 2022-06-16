@@ -25,7 +25,7 @@ class CansMsgId(IntEnum):
     SESSION_ESTABLISHED = auto()
     USER_MESSAGE = auto()
     PEER_HELLO = auto()
-    SHARE_CONTACTS = auto()
+    SHARE_FRIEND = auto()
 
     # Peer-to-peer delivery signaling
     ACK_MESSAGE_DELIVERED = auto()
@@ -93,6 +93,22 @@ class PeerHello(CansMessage):
         self.header.receiver = receiver
         self.payload = {
             "magic": CANS_PEER_HANDSHAKE_MAGIC,
+        }
+
+
+class ShareFriend(CansMessage):
+    """Share a friend with another friend."""
+
+    def __init__(
+        self, receiver: str, shared_friend: str, local_name: str
+    ) -> None:
+        """Create a friend sharing message."""
+        super().__init__()
+        self.header.msg_id = CansMsgId.SHARE_FRIEND
+        self.header.receiver = receiver
+        self.payload = {
+            "friend": shared_friend,
+            "name": local_name,
         }
 
 
