@@ -343,6 +343,11 @@ class InputTile(Tile):
 
         self.mask_input = False
         self.mode = InputMode.NORMAL
+        self._terminate = False
+
+    def terminate(self) -> None:
+        """Tell input function to terminate."""
+        self._terminate = True
 
     @property
     def allow_commands(self) -> bool:
@@ -406,8 +411,12 @@ class InputTile(Tile):
         # basically run forever
         while True:
             with term.raw():
-                # TODO: implement timeout to have refresh functionality
-                val = term.inkey()
+                val = term.inkey(0.1)
+
+                if self._terminate:
+                    break
+                if not val:
+                    continue
 
                 # paste handling, use the first character to check
                 # command type and add rest as additional input

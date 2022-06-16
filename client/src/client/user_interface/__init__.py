@@ -175,6 +175,8 @@ class UserInterface:
 
     def shutdown(self) -> None:
         """Shut down the user interface."""
+        self.view.footer.terminate()
+        self.view.close_threads()
         print(self.term.exit_fullscreen)
 
     def set_identity_user(self, identity: Friend) -> None:

@@ -35,6 +35,7 @@ class View:
         self.term = Terminal()
         self.loop = loop
         self.db_manager = db_manager
+        self.pools: List[concurrent.futures.ThreadPoolExecutor] = []
 
         self.log = logging.getLogger("cans-logger")
 
@@ -136,7 +137,13 @@ class View:
         """Run function in another thread."""
         # Run in a custom thread pool:
         pool = concurrent.futures.ThreadPoolExecutor()
+        self.pools.append(pool)
         await self.loop.run_in_executor(pool, task, *args)  # noqa: FKA01
+
+    def close_threads(self) -> None:
+        """Wait for all threads to close."""
+        for pool in self.pools:
+            pool.shutdown(wait=True)
 
     def add_startup_tile(
         self,
