@@ -342,6 +342,11 @@ class InputTile(Tile):
         self.prompt_position = math.floor(self.real_height / 2)
 
         self.mode = InputMode.NORMAL
+        self._terminate = False
+
+    def terminate(self) -> None:
+        """Tell input function to terminate."""
+        self._terminate = True
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins etc."""
@@ -403,7 +408,12 @@ class InputTile(Tile):
                 y_pos = prompt_location[1]
 
                 # TODO: implement timeout to have refresh functionality
-                val = term.inkey()
+                val = term.inkey(0.2)
+
+                if self._terminate:
+                    break
+                if not val:
+                    continue
 
                 # if in normal mode and input is alphanumeric, move cursor
                 if self.mode == InputMode.NORMAL and self.input_filter(val):
