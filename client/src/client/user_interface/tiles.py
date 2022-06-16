@@ -586,7 +586,7 @@ class InputTile(Tile):
 
         # handle input masking, for example when typing password
         if self.mask_input:
-            text = "*" * t.length(text) if t.length(text) > 1 else ""
+            text = "*" * t.length(text) if t.length(text) >= 1 else ""
 
         with t.hidden_cursor():
             print(t.move_xy(x_pos, y_pos), end="")
