@@ -44,7 +44,7 @@
 ### Install dependencies
 
 ```bash
-./initialize
+./bootstrap
 ```
 
 ### Install pre-commit hooks

@@ -96,7 +96,6 @@ class Client:
             )
 
             mnemonics = self.startup.generate_mnemonics(count=6, char_length=8)
-            mnemonics.append("dupa")
             self.startup.produce_priv_key_backup_files(
                 priv_key=self.priv_key, mnemonics=mnemonics
             )
