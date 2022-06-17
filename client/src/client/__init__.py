@@ -49,6 +49,8 @@ class Client:
             },
             db_manager=self.db_manager,
             first_startup=self.startup.is_first_startup(),
+            decrypt_from_disk=self.startup.decrypt_from_disk,
+            backups_dir_path=self.startup.backups_dir,
         )
 
         # Check if necessary files exist
@@ -93,13 +95,12 @@ class Client:
                 Friend(id="myself", username=user_username, color=user_color)
             )
 
-            mnemonics = [
-                "1234567890",
-                "1234567890",
-                "1234567890",
-                "1234567890",
-                "1234567890",
-            ]
+            mnemonics = self.startup.generate_mnemonics(count=6, char_length=8)
+            mnemonics.append("dupa")
+            self.startup.produce_priv_key_backup_files(
+                priv_key=self.priv_key, mnemonics=mnemonics
+            )
+
             self.ui.show_mnemonics(mnemonics)
 
         # handle consecutive startups

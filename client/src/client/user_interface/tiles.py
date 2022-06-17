@@ -471,7 +471,9 @@ class InputTile(Tile):
                         ):
                             run_coroutine_threadsafe(
                                 self.input_queue.put(
-                                    InputMess(self.mode, val.code)
+                                    InputMess(
+                                        self.mode, val.code  # type: ignore
+                                    )
                                 ),
                                 loop,
                             )
@@ -537,7 +539,9 @@ class InputTile(Tile):
                         else:
                             run_coroutine_threadsafe(
                                 self.input_queue.put(
-                                    InputMess(self.mode, val.code)
+                                    InputMess(
+                                        self.mode, val.code  # type: ignore
+                                    )
                                 ),
                                 loop,
                             )
