@@ -41,50 +41,41 @@
 
 ## Contributing for Devs
 
-### Install dependencies
+### Bootstrap the repository
+
+This is done only once after having cloned the repository:
 
 ```bash
-./bootstrap
+. bootstrap
 ```
 
-### Install pre-commit hooks
+### Initialize the workspace
+
+This needs to be done every time a new session is started:
 
 ```bash
-pip install pre-commit
-pre-commit install
+. initialize
 ```
 
-### Check if everything is fine without committing
+### Run pre-commit hooks
 
 ```bash
 pre-commit run --all-files
 ```
 
-### Set up a local environment file
+### Run tests
 
 ```bash
-cp .env.example .env
-```
-
-### Build and run
-
-```bash
-docker-compose up --build
-```
-
-### Run module tests
-
-```bash
-pip install -r requirements-dev.txt
+# Run module tests
 pytest client
 pytest server
 pytest common
-```
 
-### Run integration tests
-
-```bash
+# Run integration tests
 ./run_integration_tests
+
+# Run all of the above
+./run_full_test_suite
 ```
 
 <!-- ABOUT THE PROJECT -->
