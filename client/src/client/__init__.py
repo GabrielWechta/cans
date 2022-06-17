@@ -13,6 +13,7 @@ from peewee import DatabaseError
 from common.keys import digest_key
 from common.messages import CansMsgId
 
+from .backup_files import attempt_decrypting_priv_key_backup_files
 from .database_manager_client import DatabaseManager
 from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
@@ -49,8 +50,6 @@ class Client:
             },
             db_manager=self.db_manager,
             first_startup=self.startup.is_first_startup(),
-            decrypt_from_disk=self.startup.decrypt_from_disk,
-            backups_dir_path=self.startup.backups_dir,
         )
 
         # Check if necessary files exist
@@ -118,10 +117,32 @@ class Client:
                     mnemonic = self.ui.blocking_prompt(
                         PasswordRecoveryState.PROMPT_MNEMONIC
                     )
-                    new_passphrase = self.ui.blocking_prompt(
-                        PasswordRecoveryState.PROMPT_NEW_PASSWORD
+                    (
+                        succesful,
+                        priv_key,
+                    ) = attempt_decrypting_priv_key_backup_files(
+                        alleged_mnemonic=mnemonic,
+                        backups_dir_path=self.startup.backups_dir,
+                        load_dec_func=self.startup.decrypt_from_disk,
                     )
-                    assert mnemonic and new_passphrase is not None
+                    if succesful:
+                        feedback = "Password changed."
+                        new_passphrase = self.ui.blocking_prompt(
+                            PasswordRecoveryState.PROMPT_NEW_PASSWORD,
+                        )
+                        password = self.startup.get_key(new_passphrase)
+                        self.startup.encrypt_on_disk(
+                            plaintext=priv_key,  # type: ignore
+                            path=str(self.startup.user_private_key_path),
+                            key=password,
+                        )
+
+                        continue  # check if user typed password correctly
+                    else:
+                        feedback = "Bad one time password provided."
+                        continue
+
+                    # assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
 

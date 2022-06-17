@@ -2,7 +2,6 @@
 import asyncio
 from collections import namedtuple
 from datetime import datetime
-from pathlib import Path
 from random import choice
 from typing import Any, Callable, List, Mapping, Optional, Union
 
@@ -10,7 +9,6 @@ import pyperclip
 from blessed import Terminal
 from blessed.formatters import FormattingString
 
-from ..backup_files import attempt_decrypting_priv_key_backup_files
 from ..database_manager_client import DatabaseManager
 from ..models import CansMessageState, Friend, Message
 from .input import InputMode
@@ -31,8 +29,6 @@ class UserInterface:
         input_callbacks: Mapping[str, Callable],
         db_manager: DatabaseManager,
         first_startup: bool,
-        decrypt_from_disk: Callable,
-        backups_dir_path: Path,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
@@ -46,10 +42,6 @@ class UserInterface:
         # Store the client callbacks
         self.input_callbacks = input_callbacks
 
-        # Store backup files parameters
-        self.decrypt_from_disk = decrypt_from_disk
-        self.backups_dir_path = backups_dir_path
-
         # Instantiate a view
         self.view = View(
             term=self.term,
@@ -61,16 +53,16 @@ class UserInterface:
         self.loop.create_task(self._handle_user_input())
         self.cmds_layout: Mapping[Any, Callable[..., Optional[str]]] = {
             # arrow keys
-            self.term.KEY_LEFT: self.view.layout.cmd_left,
+            self.term.KEY_LEFT:  self.view.layout.cmd_left,
             self.term.KEY_RIGHT: self.view.layout.cmd_right,
-            self.term.KEY_DOWN: self.view.layout.cmd_down,
-            self.term.KEY_UP: self.view.layout.cmd_up,
+            self.term.KEY_DOWN:  self.view.layout.cmd_down,
+            self.term.KEY_UP:    self.view.layout.cmd_up,
 
             # arrow keys with shift
-            self.term.KEY_SLEFT: self.view.layout.cmd_swap_left,
-            self.term.KEY_SRIGHT: self.view.layout.cmd_swap_right,
-            self.term.KEY_SDOWN: self.view.layout.cmd_shuffle_down,
-            self.term.KEY_SUP: self.view.layout.cmd_shuffle_up,
+            self.term.KEY_SLEFT:     self.view.layout.cmd_swap_left,
+            self.term.KEY_SRIGHT:    self.view.layout.cmd_swap_right,
+            self.term.KEY_SDOWN:     self.view.layout.cmd_shuffle_down,
+            self.term.KEY_SUP:       self.view.layout.cmd_shuffle_up,
 
             # normal letters
             ' ': self.view.layout.cmd_flip,
@@ -80,9 +72,9 @@ class UserInterface:
             'r': self.view.layout.cmd_maximize,
 
             # ctrl+a
-            chr(1): self.reopen_tile,
+            chr(1):     self.reopen_tile,
             # ctrl+d
-            chr(4): self.close_tile,
+            chr(4):     self.close_tile,
         }  # fmt: skip
         """Key mapping for layout changing commands"""
 
@@ -212,11 +204,7 @@ class UserInterface:
     def validate_mnemonic(self, mnemonic: str) -> bool:
         """Validate if given mnemonic is valid."""
         mnemonic_without_whitespace = "".join(mnemonic.split())
-        return attempt_decrypting_priv_key_backup_files(
-            alleged_mnemonic=mnemonic_without_whitespace,
-            backups_dir_path=self.backups_dir_path,
-            load_dec_func=self.decrypt_from_disk,
-        )
+        return mnemonic == mnemonic_without_whitespace and len(mnemonic) == 8
 
     def validate_username(self, username: str) -> bool:
         """Validate if given username is valid."""

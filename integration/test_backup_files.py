@@ -49,7 +49,7 @@ def test_bad_attempt_decrypting_priv_key_backup_files(
     """Test if decryption fails for nonsense mnemonic."""
     tmp_dir_path = gen_save_10_priv_key_backup_files
     nonsense_mnemonic = "DoubledoubletoilandtroubleFireburnandcauldronbubble"
-    success = attempt_decrypting_priv_key_backup_files(
+    success, _ = attempt_decrypting_priv_key_backup_files(
         alleged_mnemonic=nonsense_mnemonic,
         backups_dir_path=tmp_dir_path,
         load_dec_func=Startup().decrypt_from_disk,
@@ -68,7 +68,7 @@ def test_good_attempt_decrypting_priv_key_backup_files(
     tmp_dir_path = gen_save_10_priv_key_backup_files
     mnemonics = gen_mnemonics
     for mnemonic in mnemonics:
-        success = attempt_decrypting_priv_key_backup_files(
+        success, _ = attempt_decrypting_priv_key_backup_files(
             alleged_mnemonic=mnemonic,
             backups_dir_path=tmp_dir_path,
             load_dec_func=Startup().decrypt_from_disk,

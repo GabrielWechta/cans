@@ -4,7 +4,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional, Tuple
 
 
 def gen_save_priv_key_backup_files(
@@ -43,7 +43,7 @@ def gen_save_priv_key_backup_files(
 
 def attempt_decrypting_priv_key_backup_files(
     alleged_mnemonic: str, backups_dir_path: Path, load_dec_func: Callable
-) -> bool:
+) -> Tuple[bool, Optional[str]]:
     """
     Try to decrypt backup files, using provided mnemonic.
 
@@ -76,7 +76,9 @@ def attempt_decrypting_priv_key_backup_files(
         str(backups_dir_path / "priv_key_backup_*")
     ):
         try:
-            _ = load_dec_func(path=backup_file_path, key=key_for_decryption)
+            priv_key = load_dec_func(
+                path=backup_file_path, key=key_for_decryption
+            )
             log.info(
                 f"Successfully decrypted {backup_file_path}. "
                 f"Removing that file..."
@@ -84,9 +86,9 @@ def attempt_decrypting_priv_key_backup_files(
 
             os.remove(path=backup_file_path)
 
-            return True
+            return True, priv_key
 
         except ValueError:
             log.info(f"Unsuccessful attempt to decrypt {backup_file_path}.")
 
-    return False
+    return False, None

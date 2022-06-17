@@ -87,7 +87,7 @@ class Startup:
                     "/usr/bin/blkid -s UUID -o value | /usr/bin/head -n 1",
                     shell=True,
                 )
-            )
+            )  # fbd47eaa
             cpu_model = str(
                 subprocess.check_output(
                     "/usr/bin/lscpu | /usr/bin/grep 'Model name' "
@@ -191,7 +191,7 @@ class Startup:
     @staticmethod
     def generate_mnemonics(count: int, char_length: int) -> List[str]:
         """Generate mnemonics values with given parameters."""
-        mnemonics = [secrets.token_hex(char_length) for _ in range(count)]
+        mnemonics = [secrets.token_hex(char_length // 2) for _ in range(count)]
         return mnemonics
 
     def produce_priv_key_backup_files(
