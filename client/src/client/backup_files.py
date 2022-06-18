@@ -43,7 +43,7 @@ def gen_save_priv_key_backup_files(
 
 def attempt_decrypting_priv_key_backup_files(
     alleged_mnemonic: str, backups_dir_path: Path, load_dec_func: Callable
-) -> Tuple[bool, Optional[str]]:
+) -> Tuple[bool, bool, Optional[str]]:
     """
     Try to decrypt backup files, using provided mnemonic.
 
@@ -72,6 +72,11 @@ def attempt_decrypting_priv_key_backup_files(
     key_for_decryption = hashlib.sha256(alleged_mnemonic.encode()).hexdigest()
     log = logging.getLogger("cans-logger")
 
+    backups = glob.glob(str(backups_dir_path / "priv_key_backup_*"))
+
+    if not backups:
+        return False, True, None
+
     for backup_file_path in glob.glob(
         str(backups_dir_path / "priv_key_backup_*")
     ):
@@ -86,9 +91,9 @@ def attempt_decrypting_priv_key_backup_files(
 
             os.remove(path=backup_file_path)
 
-            return True, priv_key
+            return True, False, priv_key
 
         except ValueError:
             log.info(f"Unsuccessful attempt to decrypt {backup_file_path}.")
 
-    return False, None
+    return False, False, None

@@ -118,14 +118,16 @@ class Client:
                         PasswordRecoveryState.PROMPT_MNEMONIC
                     )
                     (
-                        succesful,
+                        successful,
+                        empty,
                         priv_key,
                     ) = attempt_decrypting_priv_key_backup_files(
                         alleged_mnemonic=mnemonic,
                         backups_dir_path=self.startup.backups_dir,
                         load_dec_func=self.startup.decrypt_from_disk,
                     )
-                    if succesful:
+
+                    if successful:
                         feedback = "Password changed."
                         new_passphrase = self.ui.blocking_prompt(
                             PasswordRecoveryState.PROMPT_NEW_PASSWORD,
@@ -138,11 +140,12 @@ class Client:
                         )
 
                         continue  # check if user typed password correctly
+                    elif empty:
+                        feedback = "No backup files remaining. Tough luck."
+                        continue
                     else:
                         feedback = "Bad one time password provided."
                         continue
-
-                    # assert mnemonic and new_passphrase is not None
 
                 self.password = self.startup.get_key(user_passphrase)
 
