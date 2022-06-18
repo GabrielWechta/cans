@@ -1,11 +1,49 @@
-#!/usr/bin/env bash
+# This script should be sourced, not executed
 
 OLM_URI=https://gitlab.matrix.org/matrix-org/olm.git
 OLM_TAG=3.2.11
 OLM_DIR=resources/olm
+DEPENDENCIES=""
+DEPENDENCIES+=" sqlcipher"
+DEPENDENCIES+=" libsqlcipher-dev"
+DEPENDENCIES+=" libssl-dev"
+DEPENDENCIES+=" libolm-dev"
+DEPENDENCIES+=" xclip"
+
+echo "Making local copy of the environment file..."
+cp .env.example .env
+
+echo "Installing pre-commit hooks..."
+pip install pre-commit
+pre-commit install
 
 echo "Cloning olm repository..."
 git clone ${OLM_URI} -b ${OLM_TAG} ${OLM_DIR}
 
 echo "Patching olm-python3 Makefile..."
 patch resources/olm/python/Makefile resources/patches/000_add_olm-python3_rule_to_makefile.patch
+
+echo "Installing dependencies..."
+sudo apt-get update
+sudo apt-get install -y $DEPENDENCIES || \
+    { echo "Error! Failed to install dependencies: $DEPENDENCIES" && exit 1; }
+
+echo "Building olm from source..."
+cd resources/olm && cmake . -B build && cmake --build build && make install || \
+    { echo "Error! Failed to build olm dependency!" && exit 1; }
+echo "olm built successfully"
+
+echo "Building Python bindings for olm..."
+cd python
+make olm-python3 || { echo "Error! Failed to build Python bindings for olm!" }
+echo "olm bindings built successfully"
+
+cd ../../..
+
+echo "Initializing a virtual environment..."
+python3 -m venv venv
+. venv/bin/activate
+echo "Installing requirements-dev.txt..."
+pip install -r requirements-dev.txt
+echo "Leaving the virtual environment..."
+deactivate

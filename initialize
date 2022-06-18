@@ -1,33 +1,14 @@
-#!/usr/bin/env bash
-
-DEPENDENCIES=""
-DEPENDENCIES+=" sqlcipher"
-DEPENDENCIES+=" libsqlcipher-dev"
-DEPENDENCIES+=" libsqlcipher-dev"
-DEPENDENCIES+=" libssl-dev"
-DEPENDENCIES+=" libolm-dev"
-DEPENDENCIES+=" xclip"
-
-
-echo "Installing dependencies..."
-sudo apt-get update
-sudo apt-get install -y $DEPENDENCIES || \
-    { echo "Error! Failed to install dependencies: $DEPENDENCIES" && exit 1; }
-
-echo "Building olm from source..."
-cd resources/olm && cmake . -B build && cmake --build build && make install || \
-    { echo "Error! Failed to build olm dependency!" && exit 1; }
-echo "olm built successfully"
-
-echo "Building Python bindings for olm..."
-cd python
-make olm-python3 || { echo "Error! Failed to build Python bindings for olm!" }
-echo "olm bindings built successfully"
-
-cd ../../..
+# This script should be sourced, not executed
 
 echo "Initializing a virtual environment..."
 python3 -m venv venv
 . venv/bin/activate
-echo "Installing requirements-dev.txt..."
-pip install -r requirements-dev.txt
+echo "Virtual environment set up"
+
+echo "Setting up environment variables..."
+set -a
+. ./.env
+set +a
+# Overwrite the cans-server hostname with localhost for running
+# local instances of the client application
+export CANS_SERVER_HOSTNAME=localhost
