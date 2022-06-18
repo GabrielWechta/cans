@@ -8,6 +8,7 @@ DEPENDENCIES+=" sqlcipher"
 DEPENDENCIES+=" libsqlcipher-dev"
 DEPENDENCIES+=" libssl-dev"
 DEPENDENCIES+=" libolm-dev"
+DEPENDENCIES+=" xclip"
 
 echo "Making local copy of the environment file..."
 cp .env.example .env
@@ -44,3 +45,5 @@ python3 -m venv venv
 . venv/bin/activate
 echo "Installing requirements-dev.txt..."
 pip install -r requirements-dev.txt
+echo "Leaving the virtual environment..."
+deactivate

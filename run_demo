@@ -6,9 +6,9 @@
 docker-compose down --remove-orphans
 
 # Start the server
-docker-compose up --build --detach cans-server || { echo "Starting the server failed" && exit 1; }
+docker-compose up --detach cans-server || { echo "Starting the server failed" && exit 1; }
 # Start the echo client
-docker-compose up --build --detach cans-echo-service || { \
+docker-compose up --detach cans-echo-service || { \
     echo "Starting the echo service failed" && docker-compose down && exit 1; \
 }
 

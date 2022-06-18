@@ -209,10 +209,10 @@ class UserInterface:
         password_without_whitespace = "".join(password.split())
         return password == password_without_whitespace and len(password) >= 6
 
-    def validate_mnemonic(self, password: str) -> bool:
-        """Validate if given one time password is valid."""
-        password_without_whitespace = "".join(password.split())
-        return password == password_without_whitespace and len(password) == 10
+    def validate_mnemonic(self, mnemonic: str) -> bool:
+        """Validate if given mnemonic is valid."""
+        mnemonic_without_whitespace = "".join(mnemonic.split())
+        return mnemonic == mnemonic_without_whitespace and len(mnemonic) == 8
 
     def validate_username(self, username: str) -> bool:
         """Validate if given username is valid."""

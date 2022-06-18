@@ -17,7 +17,6 @@ def database(tmpdir_factory):
     db_file = tmpdir_factory.mktemp("db_test").join("test.db")
     db = DatabaseManager(
         name=db_file,
-        password="SafeAndSecurePassword2137",
     )
     return db
 
@@ -25,7 +24,7 @@ def database(tmpdir_factory):
 @pytest.fixture()
 def alice(database):
     """Set up Alice. A Friend for the tests."""
-    database.initialize()
+    database.open(passphrase="SafeAndSecurePassword2137")
     return database.add_friend(
         id="Alice", username="AliceXD", color="blue", date_added=datetime.now()
     )
@@ -45,7 +44,7 @@ def bobby():
 
 def test_add_friend(database, bobby):
     """Test adding friend to database."""
-    database.initialize()
+    database.open(passphrase="SafeAndSecurePassword2137")
     friend_inserted = database.add_friend(
         id="test_key",
         username="test_user",
