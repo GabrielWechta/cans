@@ -13,6 +13,7 @@ from peewee import DatabaseError
 from common.keys import digest_key
 from common.messages import CansMsgId
 
+from .backup_files import attempt_decrypting_priv_key_backup_files
 from .database_manager_client import DatabaseManager
 from .models import CansMessageState, Friend, Message
 from .session_manager_client import SessionManager
@@ -93,13 +94,11 @@ class Client:
                 Friend(id="myself", username=user_username, color=user_color)
             )
 
-            mnemonics = [
-                "1234567890",
-                "1234567890",
-                "1234567890",
-                "1234567890",
-                "1234567890",
-            ]
+            mnemonics = self.startup.generate_mnemonics(count=6, char_length=8)
+            self.startup.produce_priv_key_backup_files(
+                priv_key=self.priv_key, mnemonics=mnemonics
+            )
+
             self.ui.show_mnemonics(mnemonics)
 
         # handle consecutive startups
@@ -118,10 +117,35 @@ class Client:
                     mnemonic = self.ui.blocking_prompt(
                         PasswordRecoveryState.PROMPT_MNEMONIC
                     )
-                    new_passphrase = self.ui.blocking_prompt(
-                        PasswordRecoveryState.PROMPT_NEW_PASSWORD
+                    (
+                        successful,
+                        empty,
+                        priv_key,
+                    ) = attempt_decrypting_priv_key_backup_files(
+                        alleged_mnemonic=mnemonic,
+                        backups_dir_path=self.startup.backups_dir,
+                        load_dec_func=self.startup.decrypt_from_disk,
                     )
-                    assert mnemonic and new_passphrase is not None
+
+                    if successful:
+                        feedback = "Password changed."
+                        new_passphrase = self.ui.blocking_prompt(
+                            PasswordRecoveryState.PROMPT_NEW_PASSWORD,
+                        )
+                        password = self.startup.get_key(new_passphrase)
+                        self.startup.encrypt_on_disk(
+                            plaintext=priv_key,  # type: ignore
+                            path=str(self.startup.user_private_key_path),
+                            key=password,
+                        )
+
+                        continue  # check if user typed password correctly
+                    elif empty:
+                        feedback = "No backup files remaining. Tough luck."
+                        continue
+                    else:
+                        feedback = "Bad one time password provided."
+                        continue
 
                 self.password = self.startup.get_key(user_passphrase)
 

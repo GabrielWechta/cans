@@ -29,6 +29,7 @@ MANIFEST
 
 # PyCharm
 .idea
+*.toml
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -148,3 +149,7 @@ resources/olm
 
 # ignore custom fish scipts
 *.fish
+
+# for now let's exclude pipenv files
+Pipfile
+Pipfile.lock

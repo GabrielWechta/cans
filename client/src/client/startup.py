@@ -4,10 +4,12 @@ import getpass
 import hashlib
 import json
 import logging
+import os
+import secrets
 import subprocess
-from os import mkdir, path
 from pathlib import Path
 from shutil import rmtree
+from typing import List
 
 from Cryptodome.Cipher import AES, _mode_gcm
 from olm import Account
@@ -19,6 +21,8 @@ from common.keys import (
     get_public_key_pem,
 )
 
+from .backup_files import gen_save_priv_key_backup_files
+
 
 class Startup:
     """Startup Component.
@@ -29,10 +33,10 @@ class Startup:
     """
 
     def __init__(self) -> None:
-        """Intialize application data paths."""
+        """Initialize application data paths."""
         self._home_dir = Path.home() / ".cans"
         self._keys_dir = self._home_dir / "keys"
-        self._backups_dir = self._home_dir / "backups"
+        self.backups_dir = self._home_dir / "backups"
         self.db_path = self._home_dir / "user_data.db"
         self.user_private_key_path = self._keys_dir / "priv.pem"
         self.crypto_account_path = self._home_dir / "crypto_account"
@@ -42,14 +46,14 @@ class Startup:
     def cans_setup(self) -> None:
         """Create all necessary directories."""
         rmtree(path=self._home_dir, ignore_errors=True)
-        mkdir(self._home_dir, mode=0o700)
-        mkdir(self._keys_dir, mode=0o700)
-        mkdir(self._backups_dir, mode=0o700)
+        os.mkdir(self._home_dir, mode=0o700)
+        os.mkdir(self._keys_dir, mode=0o700)
+        os.mkdir(self.backups_dir, mode=0o700)
 
     def is_first_startup(self) -> bool:
         """Check if user's EC EcPemKeyPair exists."""
-        priv_key_exists = path.isfile(self.user_private_key_path)
-        crypto_account_exists = path.isfile(self.crypto_account_path)
+        priv_key_exists = os.path.isfile(self.user_private_key_path)
+        crypto_account_exists = os.path.isfile(self.crypto_account_path)
 
         return not (priv_key_exists and crypto_account_exists)
 
@@ -57,16 +61,20 @@ class Startup:
         """Create a libolm Account() object and store it."""
         account = Account()
         pickled = account.pickle(passphrase)
-        with open(self.crypto_account_path, "wb") as fd:
-            fd.write(pickled)
+        fd = os.open(
+            path=self.crypto_account_path,
+            flags=os.O_CREAT | os.O_WRONLY,
+            mode=0o700,
+        )
+        os.write(fd, pickled)
         return account
 
     def load_crypto_account(self, passphrase: str) -> Account:
         """Load an existing libolm Account() object."""
-        with open(self.crypto_account_path, "rb") as fd:
-            pickled = fd.read()
-            account = Account.from_pickle(pickled, passphrase)
-            return account
+        fd = os.open(path=self.crypto_account_path, flags=os.O_RDONLY)
+        pickled = os.read(fd, os.path.getsize(self.crypto_account_path))
+        account = Account.from_pickle(pickled, passphrase)
+        return account
 
     def _hardware_fingerprint(self) -> str:
         """Derive a fingerprint from system hardware.
@@ -135,7 +143,11 @@ class Startup:
         return cipher.nonce + tag + ciphertext
 
     def _decrypt(self, key: str, ciphertext: bytes) -> str:
-        """Use AES-GCM to decrypt a given ciphertext."""
+        """Use AES-GCM to decrypt a given ciphertext.
+
+        This function raises ValueError if the MAC tag is not valid,
+        that is, if the entire message should not be trusted.
+        """
         key_bytes = bytes.fromhex(key)
 
         cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=ciphertext[:16])
@@ -149,15 +161,15 @@ class Startup:
 
     def encrypt_on_disk(self, plaintext: str, path: str, key: str) -> None:
         """Encrypt given plaintext and store it in a file."""
-        with open(path, "wb") as enc_file:
-            ciphertext = self._encrypt(key=key, plaintext=plaintext)
-            enc_file.write(ciphertext)
+        fd = os.open(path=path, flags=os.O_CREAT | os.O_WRONLY, mode=0o700)
+        ciphertext = self._encrypt(key=key, plaintext=plaintext)
+        os.write(fd, ciphertext)
 
     def decrypt_from_disk(self, path: str, key: str) -> str:
         """Decrypt data from a given file and return it."""
-        with open(path, "rb") as enc_file:
-            ciphertext = enc_file.read()
-            return self._decrypt(key=key, ciphertext=ciphertext)
+        fd = os.open(path=path, flags=os.O_RDONLY)
+        ciphertext = os.read(fd, os.path.getsize(path))
+        return self._decrypt(key=key, ciphertext=ciphertext)
 
     def generate_private_key(self, password: str) -> None:
         """Run Cryptodome to generate EC private key.
@@ -186,3 +198,20 @@ class Startup:
         pub_key = get_public_key_pem(priv_key)
 
         return priv_key, pub_key
+
+    @staticmethod
+    def generate_mnemonics(count: int, char_length: int) -> List[str]:
+        """Generate mnemonics values with given parameters."""
+        mnemonics = [secrets.token_hex(char_length // 2) for _ in range(count)]
+        return mnemonics
+
+    def produce_priv_key_backup_files(
+        self, priv_key: str, mnemonics: List[str]
+    ) -> None:
+        """Produce priv_key backup files using mnemonics."""
+        gen_save_priv_key_backup_files(
+            priv_key=priv_key,
+            mnemonics=mnemonics,
+            backups_dir_path=self.backups_dir,
+            enc_save_func=self.encrypt_on_disk,
+        )

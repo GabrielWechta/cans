@@ -6,6 +6,8 @@ DEPENDENCIES+=" libsqlcipher-dev"
 DEPENDENCIES+=" libsqlcipher-dev"
 DEPENDENCIES+=" libssl-dev"
 DEPENDENCIES+=" libolm-dev"
+DEPENDENCIES+=" xclip"
+
 
 echo "Installing dependencies..."
 sudo apt-get update
