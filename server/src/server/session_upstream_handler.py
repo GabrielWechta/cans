@@ -54,7 +54,7 @@ class SessionUpstreamHandler:
         self.database_manager = database_manager
         self.message_handlers = {
             CansMsgId.USER_MESSAGE: self.__handle_message_user_message,
-            CansMsgId.SHARE_CONTACTS: self.__handle_message_share_contacts,
+            CansMsgId.SHARE_FRIEND: self.__handle_message_share_friend,
             CansMsgId.PEER_HELLO: self.__handle_message_peer_hello,
             CansMsgId.ADD_FRIEND: self.__handle_message_add_friend,
             # fmt: off
@@ -111,10 +111,10 @@ class SessionUpstreamHandler:
         # User traffic - just route it
         await self.route_message(message)
 
-    async def __handle_message_share_contacts(
+    async def __handle_message_share_friend(
         self, message: CansMessage, session: ClientSession
     ) -> None:
-        """Handle message type SHARE_CONTACTS."""
+        """Handle message type SHARE_FRIEND."""
         # User traffic - just route it
         await self.route_message(message)
 

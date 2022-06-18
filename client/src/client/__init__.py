@@ -287,6 +287,9 @@ class Client:
                 self.ui.on_system_message_received(
                     payload, message.payload["peer"]
                 )
+            elif message.header.msg_id == CansMsgId.SHARE_FRIEND:
+                # TODO: Implement me!
+                self.log.critical("SHARE_FRIEND handler: Implement me!")
             elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
                 self.ui.view.update_message_status(
                     chat_with=message.header.sender,

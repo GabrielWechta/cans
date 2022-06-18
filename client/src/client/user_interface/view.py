@@ -8,7 +8,6 @@ import concurrent
 import logging
 import signal
 from datetime import datetime
-from threading import Event
 from typing import Any, Callable, List, Mapping, Optional, Union
 
 from blessed import Terminal
@@ -36,10 +35,9 @@ class View:
         self.term = Terminal()
         self.loop = loop
         self.db_manager = db_manager
+        self.pools: List[concurrent.futures.ThreadPoolExecutor] = []
 
         self.log = logging.getLogger("cans-logger")
-
-        self.on_resize_event = Event()
 
         # set identity
         self.myself = Friend()
@@ -75,7 +73,6 @@ class View:
                 self.footer.input,  # noqa: FKA01
                 self.term,  # noqa: FKA01
                 self.loop,  # noqa: FKA01
-                self.on_resize_event,  # noqa: FKA01
             )  # noqa: FKA01
         )  # noqa: FKA01
 
@@ -98,6 +95,13 @@ class View:
 
         # render the screen
         loop.run_until_complete(self.render_all())
+
+    def set_input_masking(self, mask_input: bool) -> None:
+        """Set input masking on or off.
+
+        If input masking is on, input will be masked with '*' characters.
+        """
+        self.footer.set_input_masking(mask_input)
 
     def set_identity_user(self, identity: Friend) -> None:
         """Set given Friend as myself."""
@@ -133,7 +137,13 @@ class View:
         """Run function in another thread."""
         # Run in a custom thread pool:
         pool = concurrent.futures.ThreadPoolExecutor()
+        self.pools.append(pool)
         await self.loop.run_in_executor(pool, task, *args)  # noqa: FKA01
+
+    def close_threads(self) -> None:
+        """Wait for all threads to close."""
+        for pool in self.pools:
+            pool.shutdown(wait=True)
 
     def add_startup_tile(
         self,
@@ -164,7 +174,7 @@ class View:
 
         self.loop.create_task(self.layout.render_all())
         self.loop.create_task(self.header.render(self.term))
-        self.on_resize_event.set()
+        self.loop.create_task(self.footer.on_resize(self.term))
 
     def add_chat(self, chat_with: Union[Friend, str]) -> None:
         """Add a chat tile with a given user."""

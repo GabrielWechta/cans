@@ -35,6 +35,7 @@ from common.messages import (
     SchnorrCommit,
     SchnorrResponse,
     SessionEstablished,
+    ShareFriend,
     UserMessage,
     cans_recv,
     cans_send,
@@ -72,6 +73,7 @@ class SessionManager:
             CansMsgId.PEER_HELLO: self._handle_message_peer_hello,
             CansMsgId.PEER_LOGIN: self._handle_message_peer_login,
             CansMsgId.PEER_LOGOUT: self._handle_message_peer_logout,
+            CansMsgId.SHARE_FRIEND: self._handle_message_share_friend,
             # fmt: off
             CansMsgId.ACK_MESSAGE_DELIVERED:
                 self.__handle_message_ack_message_delivered,
@@ -441,6 +443,17 @@ class SessionManager:
         self.session_sm.terminate_session(peer)
 
         self.log.info(f"'{peer}' just logged out!")
+        await self.downstream_system_message_queue.put(message)
+
+    async def _handle_message_share_friend(self, message: CansMessage) -> None:
+        """Handle message type SHARE_FRIEND."""
+        check_payload(message, ShareFriend)
+        sender = message.header.sender
+        friend = message.payload["friend"]
+        name = message.payload["name"]
+        self.log.info(f"'{sender} shared their friend {friend} ({name})")
+        # Nothing to do about this at session manager level - 'friends' is
+        # upper-layer concept - session manager is oblivious to it
         await self.downstream_system_message_queue.put(message)
 
     async def __handle_message_ack_message_delivered(

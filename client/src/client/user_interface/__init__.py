@@ -16,7 +16,7 @@ from .state_machines import PasswordRecoveryState, StartupState, StateMachine
 from .tiles import ChatTile, PromptTile, Tile
 from .view import View
 
-InputState = namedtuple("InputState", "title prompt validation")
+PromptConfig = namedtuple("PromptConfig", "title prompt validation mask_input")
 Config = namedtuple("Config", "username passphrase color")
 
 
@@ -99,7 +99,7 @@ class UserInterface:
         """System user for system commands"""
 
         self.prompt_switches = {
-            StartupState.PROMPT_USERNAME: InputState(
+            StartupState.PROMPT_USERNAME: PromptConfig(
                 title=f"Startup {StartupState.PROMPT_USERNAME.value}"
                 " - Set username",
                 prompt=f"Welcome to {self.term.red_bold_underline('cans')}! "
@@ -107,15 +107,17 @@ class UserInterface:
                 "Username cannot contain trailing/leading whitespaces and "
                 "cannot be empty.",
                 validation=self.validate_username,
+                mask_input=False,
             ),
-            StartupState.PROMPT_COLOR: InputState(
+            StartupState.PROMPT_COLOR: PromptConfig(
                 title=f"Startup {StartupState.PROMPT_COLOR.value} - Set color",
                 prompt="Please input the color you want to "
                 "use for your username, "
                 "it can be changed later.",
                 validation=self.validate_color,
+                mask_input=False,
             ),
-            StartupState.PROMPT_PASSWORD: InputState(
+            StartupState.PROMPT_PASSWORD: PromptConfig(
                 title=f"Startup [{StartupState.PROMPT_PASSWORD.value}]"
                 " - [Optional] Set password",
                 prompt="If you want to have additional protection, input a "
@@ -123,8 +125,9 @@ class UserInterface:
                 "whitespace characters and if provided it should be at "
                 "least 6 characters long.",
                 validation=self.validate_password,
+                mask_input=True,
             ),
-            PasswordRecoveryState.PROMPT_MNEMONIC: InputState(
+            PasswordRecoveryState.PROMPT_MNEMONIC: PromptConfig(
                 title=f"Recovery {PasswordRecoveryState.PROMPT_MNEMONIC.value}"
                 " - Input one time password",
                 prompt=f"It seems you've {self.term.bold('forgotten')} "
@@ -132,8 +135,9 @@ class UserInterface:
                 f"{self.term.green('one time passwords')} that were "
                 "generated during registration.",
                 validation=self.validate_mnemonic,
+                mask_input=False,
             ),
-            PasswordRecoveryState.PROMPT_NEW_PASSWORD: InputState(
+            PasswordRecoveryState.PROMPT_NEW_PASSWORD: PromptConfig(
                 title=f"Recovery "
                 f"[{PasswordRecoveryState.PROMPT_NEW_PASSWORD.value}]"
                 " - [Optional] Set password",
@@ -143,12 +147,14 @@ class UserInterface:
                 "least 6 characters long. Please try to remember it this "
                 "time.",
                 validation=self.validate_password,
+                mask_input=True,
             ),
-            "password": InputState(
+            "password": PromptConfig(
                 title="Input password",
                 prompt="Please input your password."
                 "Input '~' to enter password recovery mode.",
                 validation=self.validate_password,
+                mask_input=True,
             ),
         }
         """Prompt states in from (title, prompt, validation)"""
@@ -169,6 +175,8 @@ class UserInterface:
 
     def shutdown(self) -> None:
         """Shut down the user interface."""
+        self.view.footer.terminate()
+        self.view.close_threads()
         print(self.term.exit_fullscreen)
 
     def set_identity_user(self, identity: Friend) -> None:
@@ -463,7 +471,7 @@ class UserInterface:
 
     def blocking_prompt(
         self,
-        prompt_state: Union[PasswordRecoveryState, StartupState, str],
+        prompt_config: Union[PasswordRecoveryState, StartupState, str],
         feedback: str = "",
     ) -> str:
         """Prompt user in blocking mode.
@@ -471,8 +479,9 @@ class UserInterface:
         Runs its own event loop. Look up UI.prompt_state_switches for
         reference.
         """
-        self.set_prompt_tile(prompt_state)
+        self.set_prompt_tile(prompt_config)
         self.loop.run_until_complete(self.view.render_all())
+
         # set feedback if any
         assert self.prompt_tile
         if feedback:
@@ -482,13 +491,16 @@ class UserInterface:
 
         user_input = self.loop.run_until_complete(self.prompt_queue.get())
 
+        # reset input masking
+        self.view.set_input_masking(False)
+
         return user_input
 
     async def create_queue(self) -> None:
         """Create a queue inside event loop."""
         self.prompt_queue: asyncio.Queue = asyncio.Queue()
 
-    def _early_prompt(
+    def _multistage_prompt(
         self,
         state_machine: StateMachine,
         feedback: str = "",
@@ -521,6 +533,9 @@ class UserInterface:
                 break
             state_machine.next()
 
+        # reset input masking
+        self.view.set_input_masking(False)
+
         return output
 
     def early_prompt_startup(
@@ -536,7 +551,7 @@ class UserInterface:
         unless isolate_state is true.
         """
         state_machine = StateMachine(StartupState, state=state.value - 1)
-        config = self._early_prompt(
+        config = self._multistage_prompt(
             state_machine=state_machine,
             feedback=feedback,
             isolate_state=isolate_state,
@@ -553,7 +568,7 @@ class UserInterface:
         """
         case = self.prompt_switches.get(state, "Invalid state")
 
-        assert isinstance(case, InputState)
+        assert isinstance(case, PromptConfig)
 
         if not self.prompt_tile or self.prompt_tile.title != case.title:
             new_prompt = self.view.add_startup_tile(
@@ -564,6 +579,9 @@ class UserInterface:
             if self.prompt_tile:
                 self.view.layout.remove(self.prompt_tile)
             self.prompt_tile = new_prompt
+
+        # set input masking
+        self.view.set_input_masking(case.mask_input)
 
     async def _handle_user_input(self) -> None:
         """Handle user input asynchronously."""

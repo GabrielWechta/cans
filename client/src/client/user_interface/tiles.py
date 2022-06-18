@@ -4,7 +4,6 @@ import math
 from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
 from collections import namedtuple
 from datetime import datetime
-from threading import Event
 from typing import Any, Callable, List, Optional, Tuple
 
 from blessed import Terminal, keyboard
@@ -337,11 +336,33 @@ class InputTile(Tile):
     def __init__(self, prompt: str = "> ", *args: Any, **kwargs: Any) -> None:
         """Init input Tile."""
         self.prompt = prompt
+        self.input_text = ""
         Tile.__init__(self, *args, **kwargs)
         self.input_queue: Queue = Queue()
         self.prompt_position = math.floor(self.real_height / 2)
 
+        self.mask_input = False
         self.mode = InputMode.NORMAL
+        self._terminate = False
+
+    def terminate(self) -> None:
+        """Tell input function to terminate."""
+        self._terminate = True
+
+    @property
+    def allow_commands(self) -> bool:
+        """Check whether command mode is allowed."""
+        if self.mask_input:
+            return False
+        else:
+            return True
+
+    def set_input_masking(self, mask_input: bool) -> None:
+        """Set input masking on or off.
+
+        If input masking is on, input will be masked with '*' characters.
+        """
+        self.mask_input = mask_input
 
     def real_size(self) -> None:
         """Calculate real size, excluding margins etc."""
@@ -373,19 +394,12 @@ class InputTile(Tile):
         # it's always on the botton of the screen
         self.y = t.height - self.height
 
-        await self.clear_input(t)
-
         await self.render(t)
+        await self.display_input(t)
 
-    def input(
-        self, term: Terminal, loop: BaseEventLoop, on_resize_event: Event
-    ) -> None:
-        """
-        Input function, kinda better edition.
-
-        TODO: think about even better implementation.
-        """
-        input_text = ""
+    def input(self, term: Terminal, loop: BaseEventLoop) -> None:
+        """Input function, kinda better edition."""
+        self.input_text = ""
         prompt_location = self.prompt_location()
         # move cursor to prompt
         run_coroutine_threadsafe(
@@ -397,17 +411,12 @@ class InputTile(Tile):
         # basically run forever
         while True:
             with term.raw():
-                # get starting cursor position
-                prompt_location = self.prompt_location()
-                x_pos = prompt_location[0] + term.length(input_text)
-                y_pos = prompt_location[1]
+                val = term.inkey(0.1)
 
-                # TODO: implement timeout to have refresh functionality
-                val = term.inkey()
-
-                # if in normal mode and input is alphanumeric, move cursor
-                if self.mode == InputMode.NORMAL and self.input_filter(val):
-                    x_pos += 1
+                if self._terminate:
+                    break
+                if not val:
+                    continue
 
                 # paste handling, use the first character to check
                 # command type and add rest as additional input
@@ -418,26 +427,6 @@ class InputTile(Tile):
                 while next and self.input_filter(next):
                     add_input += next
                     next = term.inkey(timeout=0.010)
-
-                # set cursor position
-                # TODO: refactor all of those to use term.move_left
-                run_coroutine_threadsafe(
-                    self.print_threadsafe(
-                        term.move_xy(
-                            x_pos
-                            + term.length(add_input)
-                            + int(self.mode == InputMode.COMMAND) * 2,
-                            y_pos,
-                        ),
-                    ),
-                    loop,
-                )
-                # we have to somehow now that terminal
-                # has resized from this thread
-                # as the signals only work in main,
-                if on_resize_event.is_set():
-                    on_resize_event.clear()
-                    run_coroutine_threadsafe(self.on_resize(term), loop)
 
                 # workaround to have a working ctrl+c in raw mode
                 # and with threads
@@ -456,11 +445,16 @@ class InputTile(Tile):
                 if self.mode == InputMode.NORMAL:
                     if val.code == term.KEY_ESCAPE:
                         self.mode = InputMode.LAYOUT
-                    elif val == "/" and input_text == "":
+                    elif (
+                        val == "/"
+                        and self.input_text == ""
+                        and self.allow_commands
+                    ):
                         self.mode = InputMode.COMMAND
-                        input_text = ""
+                        self.input_text = ""
                         run_coroutine_threadsafe(
-                            self.display_prompt("/" + input_text, term), loop
+                            self.display_input(term, "/" + self.input_text),
+                            loop,
                         )
                     else:
                         # if key up or key down is pressed,
@@ -482,51 +476,32 @@ class InputTile(Tile):
 
                             run_coroutine_threadsafe(
                                 self.input_queue.put(
-                                    InputMess(self.mode, input_text)
+                                    InputMess(self.mode, self.input_text)
                                 ),
                                 loop,
                             )
 
-                            run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0], prompt_location[1]
-                                    ),
-                                ),
-                                loop,
-                            )
-                            input_text = ""
+                            self.input_text = ""
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ) and input_text != "":
-                            input_text = input_text[:-1]
-                            run_coroutine_threadsafe(
-                                self.print_threadsafe(term.move_left),
-                                loop,
-                            )
+                        ) and self.input_text != "":
+                            self.input_text = self.input_text[:-1]
                         elif self.input_filter(val):
-                            input_text += val + add_input
+                            self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_prompt(input_text, term), loop
+                            self.display_input(term), loop
                         )
                 # if layout mode
                 elif self.mode == InputMode.LAYOUT:
                     if val.code == term.KEY_ENTER:
                         self.mode = InputMode.NORMAL
-                    elif val == "/":
+                    elif val == "/" and self.allow_commands:
                         self.mode = InputMode.COMMAND
-                        input_text = ""
+                        self.input_text = ""
+
                         run_coroutine_threadsafe(
-                            self.print_threadsafe(
-                                term.move_xy(
-                                    prompt_location[0] + 1, prompt_location[1]
-                                ),
-                            ),
-                            loop,
-                        )
-                        run_coroutine_threadsafe(
-                            self.display_prompt("/" + input_text, term), loop
+                            self.display_input(term, "/"), loop
                         )
                     else:
                         if self.input_filter(val) or not val.code:
@@ -552,27 +527,20 @@ class InputTile(Tile):
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
                         )
-                        and input_text == ""
+                        and self.input_text == ""
                     ):
                         self.mode = InputMode.NORMAL
-                        input_text = ""
+                        self.input_text = ""
 
-                        run_coroutine_threadsafe(
-                            self.display_prompt("", term), loop
-                        )
-                        run_coroutine_threadsafe(
-                            self.print_threadsafe(
-                                term.move_xy(
-                                    prompt_location[0], prompt_location[1]
-                                ),
-                            ),
-                            loop,
-                        )
+                        run_coroutine_threadsafe(self.clear_input(term), loop)
 
                     else:
                         # if enter was pressed, return input
-                        if val.code == term.KEY_ENTER and input_text != "":
-                            command_with_args = input_text.split(" ")
+                        if (
+                            val.code == term.KEY_ENTER
+                            and self.input_text != ""
+                        ):
+                            command_with_args = self.input_text.split(" ")
                             command = command_with_args[0]
                             if len(command_with_args) > 1:
                                 args = command_with_args[1:]
@@ -585,58 +553,64 @@ class InputTile(Tile):
                                 loop,
                             )
 
-                            input_text = ""
+                            self.input_text = ""
                             self.mode = InputMode.NORMAL
                             run_coroutine_threadsafe(
-                                self.display_prompt("", term), loop
+                                self.clear_input(term), loop
                             )
-                            run_coroutine_threadsafe(
-                                self.print_threadsafe(
-                                    term.move_xy(
-                                        prompt_location[0], prompt_location[1]
-                                    ),
-                                ),
-                                loop,
-                            )
+
                             continue
                         # handle backspace
                         elif (
                             val.code == term.KEY_BACKSPACE
                             or val.code == term.KEY_DELETE
-                        ) and input_text != "":
-                            input_text = input_text[:-1]
-                            run_coroutine_threadsafe(
-                                self.print_threadsafe(term.move_left),
-                                loop,
-                            )
+                        ) and self.input_text != "":
+                            self.input_text = self.input_text[:-1]
                         elif self.input_filter(val):
-                            input_text += val + add_input
+                            self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_prompt("/" + input_text, term), loop
+                            self.display_input(term, "/" + self.input_text),
+                            loop,
                         )
-        # print(term.exit_fullscreen, end="")
 
     async def clear_input(self, t: Terminal) -> None:
         """Clear the input line (print a lot of whitespaces)."""
         text = ""
-        prompt_location = self.prompt_location()
-        print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
-        await self.display_prompt(text, t)
 
-    async def display_prompt(self, text: str, t: Terminal) -> None:
+        await self.display_input(t, text)
+
+    async def display_input(self, t: Terminal, text: str = None) -> None:
         """Display text in the input prompt."""
         prompt_location = self.prompt_location()
         x_pos = prompt_location[0] - t.length(self.prompt)
         y_pos = prompt_location[1]
 
-        with t.hidden_cursor(), t.location(x_pos, y_pos):
+        if text is None:
+            text = self.input_text
+
+        # handle input masking, for example when typing password
+        if self.mask_input:
+            text = "*" * t.length(text) if t.length(text) >= 1 else ""
+
+        with t.hidden_cursor():
+            print(t.move_xy(x_pos, y_pos), end="")
+
             out = self.truncate_input(self.prompt + text, t)
-            out = t.ljust(out, self.real_width + t.length(self.prompt))
             print(out, end="")
+
+            # TODO: refactor this, we don't need to clear input everytime.
+            # I will probably do that with the 'move' refactor
+            # described in input()
+            with t.location():
+                clear_text = t.ljust(
+                    "", self.real_width - t.length(out) + t.length(self.prompt)
+                )
+                print(clear_text, end="")
 
     async def print_threadsafe(self, text: str) -> None:
         """Print given message asynchronously."""
-        print(text, end="", flush=True)
+        with Terminal().hidden_cursor():
+            print(text, end="", flush=True)
 
     def prompt_location(self) -> Tuple[int, int]:
         """Return x and y coordinates of prompt."""
@@ -661,7 +635,8 @@ class InputTile(Tile):
             print(self.prompt, end="")
 
         prompt_location = self.prompt_location()
-        print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
+        with t.hidden_cursor():
+            print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
 
     def input_filter(self, keystroke: keyboard.Keystroke) -> bool:
         """
