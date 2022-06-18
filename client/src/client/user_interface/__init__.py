@@ -1,5 +1,6 @@
 """CANS application UI."""
 import asyncio
+import inspect
 from collections import namedtuple
 from datetime import datetime
 from random import choice
@@ -18,6 +19,7 @@ from .view import View
 
 PromptConfig = namedtuple("PromptConfig", "title prompt validation mask_input")
 Config = namedtuple("Config", "username passphrase color")
+CommandConfig = namedtuple("CommandConfig", "callback description")
 
 
 class UserInterface:
@@ -78,15 +80,31 @@ class UserInterface:
         }  # fmt: skip
         """Key mapping for layout changing commands"""
 
-        self.slash_cmds: Mapping[str, Callable[..., Any]] = {
-            "chat": self.view.add_chat,
-            "swap": self.view.swap_chat,
-            "close": self.close_tile,
-            "help": self.show_help,
-            "friends": self.show_friends,
-            "add": self.add_friend,
-            "remove": self.remove_friend,
-            "share": self.command_share_pubkey,
+        self.slash_cmds: Mapping[str, CommandConfig] = {
+            "chat": CommandConfig(
+                self.view.add_chat, "Open new chat box with given user."
+            ),
+            "sw": CommandConfig(
+                self.view.swap_chat,
+                "Swap focused chat box with a chat with different user.",
+            ),
+            "cl": CommandConfig(self.close_tile, "Close focused chat box."),
+            "help": CommandConfig(self.show_help, "Show help."),
+            "frds": CommandConfig(self.show_friends, "Print friendslist."),
+            "add": CommandConfig(
+                self.add_friend, "Add new friend from a key."
+            ),
+            "rm": CommandConfig(
+                self.remove_friend, "Remove a friend from friendslist."
+            ),
+            "key": CommandConfig(
+                self.print_pubkey_digest,
+                "Print and copy digest of your public key.",
+            ),
+            "shr": CommandConfig(
+                self.show_help,
+                "Share your friends with a user from focused chat box.",
+            ),
         }
         """Mapping for slash commands"""
 
@@ -265,20 +283,39 @@ class UserInterface:
             message=f"New friend {getattr(self.term, color)(username)} added!"
         )
 
-    def remove_friend(self, key: str = "") -> None:
+    def remove_friend(self, friend: str) -> None:
         """Remove given key from friendslist."""
-        if not key and isinstance(self.view.layout.current_tile, ChatTile):
-            friend = self.view.layout.current_tile.chat_with
-            friends = self.get_friends()
-            if friend in friends:
-                key = friend.id
-            else:
-                raise Exception("Key is required.")
+        # if not key and isinstance(self.view.layout.current_tile, ChatTile):
+        #     friend = self.view.layout.current_tile.chat_with
+        #     friends = self.get_friends()
+        #     if friend in friends:
+        #         key = friend.id
+        #     else:
+        #         raise Exception("Key is required if no chat is focused.")
 
-        chats = self.view.find_chats(key)
+        if not self.db_manager.get_friend(id=friend):
+            # user either not in db or username was provided
+            friend_object = self.get_friend_by_username(friend)
+            if not friend_object:
+                raise Exception("Friend not in database.")
+            friend_id = friend_object.id
+
+        # close all chats with that user
+        chats = self.view.find_chats(friend_id)
         for chat in chats:
             self.view.layout.remove(chat)
-        self.db_manager.remove_friend(key)
+
+        self.db_manager.remove_friend(friend_id)
+        self.on_system_message_received(message=f"Friend {friend_id} removed.")
+
+    def get_friend_by_username(self, username: str) -> Optional[Friend]:
+        """Return Friend object of a friend with given username."""
+        friends = self.db_manager.get_all_friends()
+        friends = list(
+            filter(lambda x: x.username.lower() == username.lower(), friends)
+        )
+
+        return friends[0] if friends else None
 
     def get_friends(self) -> List:
         """Get list of friends from DB."""
@@ -286,7 +323,7 @@ class UserInterface:
 
         return friends
 
-    def command_share_pubkey(self) -> None:
+    def print_pubkey_digest(self) -> None:
         """Print and copy user's own public key."""
         key = self.self_user_id
         pyperclip.copy(key)
@@ -294,7 +331,7 @@ class UserInterface:
         color = getattr(self.term, self.myself.color)
 
         self.on_system_message_received(
-            message=f"Your key, copied to clipboard: "
+            message=f"Your public key digest, copied to clipboard: "
             f"{self.term.underline(color(key))}"
         )
 
@@ -331,10 +368,22 @@ class UserInterface:
         self.on_system_message_received(
             message=f"-----{self.term.bold_underline('Commands:')}-----"
         )
-        for command in self.slash_cmds.keys():
-            self.on_system_message_received(
-                message=self.term.pink_underline("/" + command)
-            )
+
+        for name, command in self.slash_cmds.items():
+            message = self.term.ljust(self.term.pink_underline("/" + name), 8)
+
+            args = inspect.signature(command.callback).parameters.items()
+
+            args_list = [
+                x[0].upper()
+                if x[1].default == inspect._empty  # type: ignore
+                else "[" + x[0].lower() + "]"
+                for x in args
+            ]
+            args_as_str = ",".join(args_list)
+            message += self.term.ljust(args_as_str + " ", 16)
+            message += command.description
+            self.on_system_message_received(message=message)
 
     def on_system_message_received(
         self, message: str, relevant_user: Union[Friend, str, None] = None
@@ -373,14 +422,25 @@ class UserInterface:
         else:
             self.on_new_message_received(message_model, relevant_user)
 
-    def close_tile(self) -> None:
-        """Close focused tile."""
-        target = self.view.layout.current_tile
+    def close_tile(self, target: Union[Tile, str, None] = None) -> None:
+        """Close a tile."""
+        if not target:
+            targets = [self.view.layout.current_tile]
+        elif isinstance(target, str):
+            friend = self.get_friend_by_username(target)
+            if not friend:
+                return
+            targets = self.view.find_chats(
+                chats_with=friend.id  # type: ignore
+            )
+        else:
+            targets = [target]
         try:
             # we don't want to close StartupTiles
-            if target and not target == self.prompt_tile:
-                self.last_closed_tile.append(target)
-                self.view.layout.remove(target)
+            for target in targets:
+                if target and not target == self.prompt_tile:
+                    self.last_closed_tile.append(target)
+                    self.view.layout.remove(target)
         except IndexError:
             return
 
@@ -461,9 +521,11 @@ class UserInterface:
             prompt_text=f"Hello "
             f"{getattr(self.term, self.myself.color)(self.myself.username)}"
             f"! Use /chat [username] to start chatting, "
-            f"or type /friends to see your friendslist.",
+            f"type {self.term.purple('/frds')} to see your friendslist "
+            f"or {self.term.purple('/help')} to see commands.",
             title="Welcome!",
             input_validation_function=None,
+            close_on_input=True,
         )
 
         self.view.layout.add(welcome_screen)
@@ -616,14 +678,16 @@ class UserInterface:
             elif mode == InputMode.COMMAND and self.commands_allowed():
                 try:
                     if input_text[0] in self.slash_cmds:
-                        cmd = self.slash_cmds[input_text[0]]
+                        cmd = self.slash_cmds[input_text[0]].callback
                         cmd(*input_text[1])
 
                         await self.view.layout.render_all()
                     else:
                         self.on_system_message_received(
                             message=self.term.red(
-                                f"Unknown command: /{input_text[0]}"
+                                f"Unknown command: /{input_text[0]}. "
+                                f"Input {self.term.purple('/help')} "
+                                f"to see available commands."
                             )
                         )
                 except Exception as ex:
@@ -709,8 +773,12 @@ class UserInterface:
                         await self.prompt_tile.render(self.term)
 
                     else:
-                        await tile.consume_input(
-                            f"Use {self.term.purple_bold('/chat')} to chat, "
-                            "don't waste your time here",
-                            self.term,
-                        )
+                        if tile.close_on_input:
+                            self.close_tile(target=tile)
+                            await self.view.layout.render_all()
+                        else:
+                            await tile.consume_input(
+                                f"Use {self.term.purple_bold('/chat')} "
+                                "to chat, don't waste your time here",
+                                self.term,
+                            )

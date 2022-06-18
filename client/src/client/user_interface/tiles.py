@@ -264,6 +264,7 @@ class PromptTile(Tile):
         prompt_text: str,
         input_validation_function: Optional[Callable[[str], bool]],
         border_color: str = "bold_purple",
+        close_on_input: bool = False,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -271,6 +272,8 @@ class PromptTile(Tile):
         Tile.__init__(self, *args, **kwargs)
         self.feedback = ""
         self.prompt_text = prompt_text
+        # i
+        self.close_on_input = close_on_input
 
         # if no validation is set it will always validate.
         # Validation function should return a boolean
@@ -781,7 +784,7 @@ class ChatTile(Tile):
             + (
                 t.gray("]> ")
                 if mes.state == CansMessageState.DELIVERED
-                else t.gray("]? ")
+                else t.gray("]") + t.red("? ")
             )
             + str(mes.body)
         )
