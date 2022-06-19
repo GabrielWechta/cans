@@ -335,14 +335,22 @@ class MessageTile(PromptTile):
 class InputTile(Tile):
     """Input Tile."""
 
-    def __init__(self, prompt: str = "> ", *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        max_input_length: int = 150,
+        prompt: str = "> ",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         """Init input Tile."""
+        self._default_prompt = prompt
         self.prompt = prompt
         self.input_text = ""
         self.input_width = 0
         Tile.__init__(self, *args, **kwargs)
         self.input_queue: Queue = Queue()
         self.prompt_position = math.floor(self.real_height / 2)
+        self.max_input_length = max_input_length
 
         self.mask_input = False
         self.mode = InputMode.NORMAL
@@ -498,6 +506,9 @@ class InputTile(Tile):
                             self.input_text = self.input_text[:-1]
                         elif self.input_filter(val):
                             self.input_text += val + add_input
+                            self.input_text = self.input_text[
+                                : self.max_input_length
+                            ]
                         run_coroutine_threadsafe(
                             self.display_input(term), loop
                         )
@@ -607,11 +618,11 @@ class InputTile(Tile):
             text = self.input_text
 
         if self.mode == InputMode.NORMAL:
-            self.prompt = t.purple("> ")
+            self.prompt = t.purple(self._default_prompt)
         elif self.mode == InputMode.LAYOUT:
             self.prompt = t.red("l$")
         elif self.mode == InputMode.COMMAND:
-            self.prompt = t.pink("> ")
+            self.prompt = t.pink(self._default_prompt)
             text = t.pink("/") + text
 
         prompt_location = self.prompt_location()
@@ -625,7 +636,8 @@ class InputTile(Tile):
         with t.hidden_cursor():
             print(t.move_xy(x_pos, y_pos), end="")
 
-            out = self.truncate_input(self.prompt + text, t)  # type: ignore
+            out = self.truncate_input(text, t)  # type: ignore
+            print(self.prompt, end="")
             print(out, end="")
 
             # TODO: refactor this, we don't need to clear input everytime.
@@ -634,7 +646,7 @@ class InputTile(Tile):
             with t.location():
                 clear_text = t.ljust(
                     "",
-                    self.input_width - t.length(out) + t.length(self.prompt),
+                    self.input_width - t.length(out),
                 )
                 print(clear_text, end="")
 
@@ -653,10 +665,9 @@ class InputTile(Tile):
     def truncate_input(self, text: str, t: Terminal) -> str:
         """Truncate text to fit into the input box."""
         out = text
-        if t.length(text) > self.input_width + 1:
-            out = text[t.length(text) - (self.input_width)
-                       + (t.length(self.prompt) - 1):]  # fmt: skip
-            out = t.on_red("<" * (t.length(self.prompt))) + out
+        if t.length(text) > self.input_width - 1:
+            out = text[t.length(text) - (self.input_width) + 1:]  # fmt: skip
+            self.prompt = t.on_red("<" * (t.length(self._default_prompt)))
             # fmt:skip
         return out
 
@@ -860,10 +871,15 @@ class ChatTile(Tile):
         prompt_message = []
         if self.prompt_message:
             prompt_message = (
-                t.ljust(
-                    t.wrap(t.red(self.prompt_message), self.real_width),
-                    self.real_width,
-                )
+                [
+                    t.ljust(
+                        line,
+                        self.real_width,
+                    )
+                    for line in t.wrap(
+                        t.red(self.prompt_message), self.real_width
+                    )
+                ]
                 if self.real_width > 0
                 else []
             )
@@ -920,6 +936,7 @@ class ChatTile(Tile):
         await self.render_margins(t)
 
         buffer = self._construct_current_buffer(t)
+        self._construct_prompt_message(t)
         buffer = self._prompt_message_printable + buffer
 
         y_pos = (
