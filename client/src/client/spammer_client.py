@@ -106,10 +106,8 @@ class SpammerClient:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        peer_id = sys.argv[1]
-    else:
-        peer_id = ""
+    assert len(sys.argv) > 1, "Please provide spam recipient's ID"
+    peer_id = sys.argv[1]
     print("Peer id: " + peer_id)
     client = SpammerClient()
     client.run(peer_id)
