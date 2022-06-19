@@ -347,6 +347,7 @@ class InputTile(Tile):
         self.mask_input = False
         self.mode = InputMode.NORMAL
         self._terminate = False
+        self.right_title = ""
 
     def terminate(self) -> None:
         """Tell input function to terminate."""
@@ -449,6 +450,10 @@ class InputTile(Tile):
                 if self.mode == InputMode.NORMAL:
                     if val.code == term.KEY_ESCAPE:
                         self.mode = InputMode.LAYOUT
+                        run_coroutine_threadsafe(
+                            self.display_input(term, self.input_text),
+                            loop,
+                        )
                     elif (
                         val == "/"
                         and self.input_text == ""
@@ -457,7 +462,7 @@ class InputTile(Tile):
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/" + self.input_text),
+                            self.display_input(term, self.input_text),
                             loop,
                         )
                     else:
@@ -500,12 +505,16 @@ class InputTile(Tile):
                 elif self.mode == InputMode.LAYOUT:
                     if val.code == term.KEY_ENTER:
                         self.mode = InputMode.NORMAL
+                        run_coroutine_threadsafe(
+                            self.display_input(term, self.input_text),
+                            loop,
+                        )
                     elif val == "/" and self.allow_commands:
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
 
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/"), loop
+                            self.display_input(term, ""), loop
                         )
                     else:
                         if self.input_filter(val) or not val.code:
@@ -573,7 +582,7 @@ class InputTile(Tile):
                         elif self.input_filter(val):
                             self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/" + self.input_text),
+                            self.display_input(term, self.input_text),
                             loop,
                         )
 
@@ -583,14 +592,31 @@ class InputTile(Tile):
 
         await self.display_input(t, text)
 
+    async def render_titlebar(self, t: Terminal) -> None:
+        """Render title bar of an InputTile."""
+        title_left = self.title
+        title_right = t.rjust(self.right_title, t.width - t.length(title_left))
+
+        self.title = title_left + title_right
+        await Tile.render_titlebar(self, t)
+        self.title = title_left
+
     async def display_input(self, t: Terminal, text: str = None) -> None:
         """Display text in the input prompt."""
+        if text is None:
+            text = self.input_text
+
+        if self.mode == InputMode.NORMAL:
+            self.prompt = t.purple("> ")
+        elif self.mode == InputMode.LAYOUT:
+            self.prompt = t.red("l$")
+        elif self.mode == InputMode.COMMAND:
+            self.prompt = t.pink("> ")
+            text = t.pink("/") + text
+
         prompt_location = self.prompt_location()
         x_pos = prompt_location[0] - t.length(self.prompt)
         y_pos = prompt_location[1]
-
-        if text is None:
-            text = self.input_text
 
         # handle input masking, for example when typing password
         if self.mask_input:
@@ -599,7 +625,7 @@ class InputTile(Tile):
         with t.hidden_cursor():
             print(t.move_xy(x_pos, y_pos), end="")
 
-            out = self.truncate_input(self.prompt + text, t)
+            out = self.truncate_input(self.prompt + text, t)  # type: ignore
             print(out, end="")
 
             # TODO: refactor this, we don't need to clear input everytime.
@@ -636,12 +662,8 @@ class InputTile(Tile):
 
     async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        with t.location(self.x, self.y), t.hidden_cursor():
-            print(self.prompt, end="")
-
-        prompt_location = self.prompt_location()
-        with t.hidden_cursor():
-            print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
+        await Tile.render(self, t=t)
+        await self.display_input(t)
 
     def input_filter(self, keystroke: keyboard.Keystroke) -> bool:
         """

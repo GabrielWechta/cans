@@ -481,6 +481,9 @@ class UserInterface:
     def show_help(self) -> None:
         """Show help for slash commands."""
         full_message = f"-----{self.term.bold_underline('Commands:')}-----\n"
+        full_message += (
+            f"Press {self.term.purple('[escape]')} to enter layout mode.\n"
+        )
         full_message += self.term.red(
             self.term.ljust("/comm", 8)
             + self.term.ljust(self.term.bold("REQUIRED,[optional]"), 16)

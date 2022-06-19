@@ -17,6 +17,9 @@ from ..models import Friend, Message
 from .tiles import ChatTile, HeaderTile, InputTile, PromptTile
 from .tiling_managers import MonadTallLayout
 
+HEADER_HEIGHT = 2
+INPUT_HEIGHT = 1
+
 
 class View:
     """
@@ -48,7 +51,7 @@ class View:
             title=term.red_underline_bold("cans") + " secure messenger",
             right_title=term.purple_underline("β") + "-version",
             width=term.width,
-            height=2,
+            height=HEADER_HEIGHT,
             x=0,
             y=0,
             margins="d",
@@ -56,10 +59,11 @@ class View:
 
         footer = InputTile(
             name="Input",
+            title="Hint: [escape] lets you enter layout mode",
             width=term.width,
-            height=1,
+            height=INPUT_HEIGHT,
             x=0,
-            y=self.term.height - 1,
+            y=self.term.height - INPUT_HEIGHT,
             margins="",
         )
 
