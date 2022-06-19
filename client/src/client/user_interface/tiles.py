@@ -335,17 +335,27 @@ class MessageTile(PromptTile):
 class InputTile(Tile):
     """Input Tile."""
 
-    def __init__(self, prompt: str = "> ", *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        max_input_length: int = 150,
+        prompt: str = "> ",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         """Init input Tile."""
+        self._default_prompt = prompt
         self.prompt = prompt
         self.input_text = ""
+        self.input_width = 0
         Tile.__init__(self, *args, **kwargs)
         self.input_queue: Queue = Queue()
         self.prompt_position = math.floor(self.real_height / 2)
+        self.max_input_length = max_input_length
 
         self.mask_input = False
         self.mode = InputMode.NORMAL
         self._terminate = False
+        self.right_title = ""
 
     def terminate(self) -> None:
         """Tell input function to terminate."""
@@ -375,7 +385,8 @@ class InputTile(Tile):
             self._height - int("u" in self.margins) - int("d" in self.margins)
         ) - 1  # for titlebar
 
-        self.real_width = width - Terminal().length(self.prompt)
+        self.real_width = width
+        self.input_width = width - Terminal().length(self.prompt)
         self.real_height = height
 
     async def on_resize(self, t: Terminal) -> None:
@@ -447,6 +458,10 @@ class InputTile(Tile):
                 if self.mode == InputMode.NORMAL:
                     if val.code == term.KEY_ESCAPE:
                         self.mode = InputMode.LAYOUT
+                        run_coroutine_threadsafe(
+                            self.display_input(term, self.input_text),
+                            loop,
+                        )
                     elif (
                         val == "/"
                         and self.input_text == ""
@@ -455,7 +470,7 @@ class InputTile(Tile):
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/" + self.input_text),
+                            self.display_input(term, self.input_text),
                             loop,
                         )
                     else:
@@ -491,6 +506,9 @@ class InputTile(Tile):
                             self.input_text = self.input_text[:-1]
                         elif self.input_filter(val):
                             self.input_text += val + add_input
+                            self.input_text = self.input_text[
+                                : self.max_input_length
+                            ]
                         run_coroutine_threadsafe(
                             self.display_input(term), loop
                         )
@@ -498,12 +516,16 @@ class InputTile(Tile):
                 elif self.mode == InputMode.LAYOUT:
                     if val.code == term.KEY_ENTER:
                         self.mode = InputMode.NORMAL
+                        run_coroutine_threadsafe(
+                            self.display_input(term, self.input_text),
+                            loop,
+                        )
                     elif val == "/" and self.allow_commands:
                         self.mode = InputMode.COMMAND
                         self.input_text = ""
 
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/"), loop
+                            self.display_input(term, ""), loop
                         )
                     else:
                         if self.input_filter(val) or not val.code:
@@ -571,7 +593,7 @@ class InputTile(Tile):
                         elif self.input_filter(val):
                             self.input_text += val + add_input
                         run_coroutine_threadsafe(
-                            self.display_input(term, "/" + self.input_text),
+                            self.display_input(term, self.input_text),
                             loop,
                         )
 
@@ -581,14 +603,31 @@ class InputTile(Tile):
 
         await self.display_input(t, text)
 
+    async def render_titlebar(self, t: Terminal) -> None:
+        """Render title bar of an InputTile."""
+        title_left = self.title
+        title_right = t.rjust(self.right_title, t.width - t.length(title_left))
+
+        self.title = title_left + title_right
+        await Tile.render_titlebar(self, t)
+        self.title = title_left
+
     async def display_input(self, t: Terminal, text: str = None) -> None:
         """Display text in the input prompt."""
+        if text is None:
+            text = self.input_text
+
+        if self.mode == InputMode.NORMAL:
+            self.prompt = t.purple(self._default_prompt)
+        elif self.mode == InputMode.LAYOUT:
+            self.prompt = t.red("l$")
+        elif self.mode == InputMode.COMMAND:
+            self.prompt = t.pink(self._default_prompt)
+            text = t.pink("/") + text
+
         prompt_location = self.prompt_location()
         x_pos = prompt_location[0] - t.length(self.prompt)
         y_pos = prompt_location[1]
-
-        if text is None:
-            text = self.input_text
 
         # handle input masking, for example when typing password
         if self.mask_input:
@@ -597,7 +636,8 @@ class InputTile(Tile):
         with t.hidden_cursor():
             print(t.move_xy(x_pos, y_pos), end="")
 
-            out = self.truncate_input(self.prompt + text, t)
+            out = self.truncate_input(text, t)  # type: ignore
+            print(self.prompt, end="")
             print(out, end="")
 
             # TODO: refactor this, we don't need to clear input everytime.
@@ -605,7 +645,8 @@ class InputTile(Tile):
             # described in input()
             with t.location():
                 clear_text = t.ljust(
-                    "", self.real_width - t.length(out) + t.length(self.prompt)
+                    "",
+                    self.input_width - t.length(out),
                 )
                 print(clear_text, end="")
 
@@ -624,21 +665,16 @@ class InputTile(Tile):
     def truncate_input(self, text: str, t: Terminal) -> str:
         """Truncate text to fit into the input box."""
         out = text
-        if t.length(text) > self.real_width + 1:
-            out = text[t.length(text) - (self.real_width)
-                       + (t.length(self.prompt) - 1):]  # fmt: skip
-            out = t.on_red("<" * (t.length(self.prompt))) + out
+        if t.length(text) > self.input_width - 1:
+            out = text[t.length(text) - (self.input_width) + 1:]  # fmt: skip
+            self.prompt = t.on_red("<" * (t.length(self._default_prompt)))
             # fmt:skip
         return out
 
     async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        with t.location(self.x, self.y), t.hidden_cursor():
-            print(self.prompt, end="")
-
-        prompt_location = self.prompt_location()
-        with t.hidden_cursor():
-            print(t.move_xy(prompt_location[0], prompt_location[1]), end="")
+        await Tile.render(self, t=t)
+        await self.display_input(t)
 
     def input_filter(self, keystroke: keyboard.Keystroke) -> bool:
         """
@@ -677,6 +713,8 @@ class ChatTile(Tile):
         self._current_buffer: List[BufferItem] = []
         self.is_prompting = Lock()
         self.prompt_message = ""
+        self._prompt_message_printable: List[str] = []
+        self._printable_buffer: List[str] = []
         self._prompt_queue: Queue = Queue()
 
     async def prompt(self, prompt_message: str, t: Terminal) -> str:
@@ -686,9 +724,11 @@ class ChatTile(Tile):
             await self._prompt_queue.get()
 
         self.prompt_message = prompt_message
+        self._construct_prompt_message(t)
         await self.render(t)
         input = await self._prompt_queue.get()
         self.prompt_message = ""
+        self._prompt_message_printable = []
 
         await self.render(t)
         return input
@@ -704,23 +744,31 @@ class ChatTile(Tile):
         self._buffer = buffer
         await self.on_buffer_change()
 
-    def increment_offset(self) -> None:
+    def increment_offset(self) -> bool:
         """Increment buffer offset."""
         if self.buffer_offset < len(self._buffer) - 1:
             self.buffer_offset += 1
+            return True
+        return False
 
-    def decrement_offset(self) -> None:
+    def decrement_offset(self) -> bool:
         """Decrement buffer offset."""
         if self.buffer_offset > 0:
             self.buffer_offset -= 1
+            return True
+        return False
 
-    def reset_offset(self) -> None:
+    def reset_offset(self) -> bool:
         """Reset buffer offset."""
+        if self.buffer_offset == 0:
+            return False
         self.buffer_offset = 0
+        return True
 
-    async def add_message_to_buffer(self, mess: Message) -> None:
+    async def add_message_to_buffer(self, mess: Message, t: Terminal) -> None:
         """Add new message to buffer (newly received for example)."""
         self._buffer.insert(0, mess)
+        self._add_message_to_printable_buffer(mes=mess, t=t)
         await self.on_buffer_change()
 
     async def update_message(self, new_message: Message) -> None:
@@ -770,7 +818,14 @@ class ChatTile(Tile):
                 printable_message = self._construct_message_to_print(
                     t, message_item.message
                 )
-
+                if (
+                    len(self._printable_buffer)
+                    > self.real_height - 1 - message_item.y_pos
+                ):
+                    for i, line in enumerate(printable_message):
+                        self._printable_buffer[
+                            self.real_height - 1 - message_item.y_pos + i
+                        ] = line
                 for i, line in enumerate(printable_message):
                     if i > message_item.y_pos:
                         break
@@ -804,11 +859,43 @@ class ChatTile(Tile):
         wrapped = (
             t.wrap(message, self.real_width) if self.real_width > 0 else []
         )
+        wrapped = [t.ljust(mes, self.real_width) for mes in wrapped]
         # we need to reverse because were printing from the bottom up
         if len(wrapped) > 0:
             wrapped.reverse()
 
         return wrapped
+
+    def _construct_prompt_message(self, t: Terminal) -> None:
+        """Construct prompt message to print."""
+        prompt_message = []
+        if self.prompt_message:
+            prompt_message = (
+                [
+                    t.ljust(
+                        line,
+                        self.real_width,
+                    )
+                    for line in t.wrap(
+                        t.red(self.prompt_message), self.real_width
+                    )
+                ]
+                if self.real_width > 0
+                else []
+            )
+            prompt_message.reverse()
+        self._prompt_message_printable = prompt_message
+
+    def _add_message_to_printable_buffer(
+        self, t: Terminal, mes: Message
+    ) -> None:
+        """Add message to printable buffer."""
+        printable = self._construct_message_to_print(t, mes)
+        self._current_buffer = [BufferItem(mes, self.real_height - 1)] + [
+            BufferItem(x.message, x.y_pos - len(printable))
+            for x in self._current_buffer[:-1]
+        ]
+        self._printable_buffer = printable + self._printable_buffer
 
     def _construct_current_buffer(self, t: Terminal) -> List[str]:
         """Construct a buffer of currently displayed messages.
@@ -819,16 +906,8 @@ class ChatTile(Tile):
         buffer: List[BufferItem] = []
         printable_messages: List[str] = []
 
-        prompt_message = []
-        if self.prompt_message:
-            prompt_message = (
-                t.wrap(t.red(self.prompt_message), self.real_width)
-                if self.real_width > 0
-                else []
-            )
-            prompt_message.reverse()
-
-        max_y = self.real_height - 1 - len(prompt_message)
+        prompt_message_len = len(self._prompt_message_printable)
+        max_y = self.real_height - 1 - prompt_message_len
         for i in range(self.buffer_offset, len(self._buffer)):
             mes = self._buffer[i]
             buffer.append(BufferItem(mes, max_y - len(printable_messages)))
@@ -838,14 +917,27 @@ class ChatTile(Tile):
                 break
 
         self._current_buffer = buffer
-        printable_messages = prompt_message + printable_messages
+
+        if len(printable_messages) < self.real_height:
+            printable_messages += [
+                t.ljust("", self.real_width)
+                for x in range(
+                    self.real_height
+                    - (len(printable_messages) + prompt_message_len)
+                )
+            ]
+
+        self._printable_buffer = printable_messages
         return printable_messages
 
     async def render(self, t: Terminal) -> None:
         """Render the Tile."""
-        await Tile.render(self, t)
+        await self.render_titlebar(t)
+        await self.render_margins(t)
 
         buffer = self._construct_current_buffer(t)
+        self._construct_prompt_message(t)
+        buffer = self._prompt_message_printable + buffer
 
         y_pos = (
             self.y

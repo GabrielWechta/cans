@@ -180,7 +180,7 @@ class UserInterface:
                 mask_input=True,
             ),
         }
-        """Prompt states in from (title, prompt, validation)"""
+        """Prompt states in from (title, prompt, validation, mask input?)"""
 
         self.last_closed_tile: List[Tile] = []
 
@@ -481,6 +481,9 @@ class UserInterface:
     def show_help(self) -> None:
         """Show help for slash commands."""
         full_message = f"-----{self.term.bold_underline('Commands:')}-----\n"
+        full_message += (
+            f"Press {self.term.purple('[escape]')} to enter layout mode.\n"
+        )
         full_message += self.term.red(
             self.term.ljust("/comm", 8)
             + self.term.ljust(self.term.bold("REQUIRED,[optional]"), 16)
@@ -800,7 +803,7 @@ class UserInterface:
                         cmd = self.slash_cmds[input_text[0]].callback
                         cmd(*input_text[1])
 
-                        await self.view.layout.render_all()
+                        # await self.view.layout.render_all()
                     else:
                         self.on_system_message_received(
                             message=self.term.red(
@@ -849,11 +852,11 @@ class UserInterface:
                     ):
                         await tile.consume_input(input_text, self.term)
                     elif input_text == self.term.KEY_UP:
-                        tile.increment_offset()
-                        await tile.render(self.term)
+                        if tile.increment_offset():
+                            await tile.render(self.term)
                     elif input_text == self.term.KEY_DOWN:
-                        tile.decrement_offset()
-                        await tile.render(self.term)
+                        if tile.decrement_offset():
+                            await tile.render(self.term)
                     elif tile.chat_with != self.system_user:
                         new_message = Message(
                             from_user=self.myself,
