@@ -294,7 +294,9 @@ class View:
 
         for chat in chats:
             self.loop.create_task(
-                chat.add_message_to_buffer(new_message)  # type: ignore
+                chat.add_message_to_buffer(
+                    new_message, self.term
+                )  # type: ignore
             )  # type: ignore
 
     def input_queue(self) -> asyncio.Queue:
