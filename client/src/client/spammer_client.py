@@ -2,13 +2,13 @@
 import asyncio
 import os
 import sys
-from random import choice
+from random import choice, randrange
 
 from olm import Account
 
 from common.keys import digest_key, generate_keys
 
-from .session_manager_client import SessionManager
+from .session_manager_client import SessionManager, ShareFriend
 
 messages = [
     "Beautiful is better than ugly.",
@@ -80,6 +80,16 @@ class SpammerClient:
                 peer=peer_id, payload=choice(messages)
             )
             await self.session_manager.send_message(message)
+            # await asyncio.sleep(5)
+            share_friend_message = ShareFriend(
+                receiver=peer_id,
+                shared_friend=randrange(2**24, 2**31)
+                .to_bytes(4, "little")
+                .hex(),
+                local_name="test" + str(randrange(0, 2**16)),
+            )
+
+            await self.session_manager.send_message(share_friend_message)
             await asyncio.sleep(5)
 
     async def _cplane_sink(self) -> None:
