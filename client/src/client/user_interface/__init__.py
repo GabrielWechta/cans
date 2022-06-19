@@ -102,8 +102,13 @@ class UserInterface:
                 "Print and copy digest of your public key.",
             ),
             "shr": CommandConfig(
-                self.show_help,
-                "Share your friends with a user from focused chat box.",
+                self.share_friend,
+                "Share your friend with a user from focused chat box.",
+            ),
+            "shra": CommandConfig(
+                self.share_all_friends,
+                f"Share {self.term.bold('all')} your friends with a "
+                f"user from focused chat box.",
             ),
         }
         """Mapping for slash commands"""
@@ -187,6 +192,119 @@ class UserInterface:
 
         self.self_user_id: Optional[str] = None
 
+    def share_all_friends(self, peer: Optional[str] = None) -> None:
+        """Send friends ids to given user."""
+        friends = self.db_manager.get_all_friends()
+
+        for friend in friends:
+            try:
+                self.share_friend(shared_friend=friend.id, peer=peer)
+            except BaseException:
+                continue
+
+    def share_friend(
+        self, shared_friend: str, peer: Optional[str] = None
+    ) -> None:
+        """Send friend id to given peer."""
+        callback = self.input_callbacks["share_friend"]
+        shared_friend_object = self.find_friend_by_id_or_username(
+            shared_friend
+        )
+        if not shared_friend_object:
+            raise Exception("Friend not in database.")
+
+        if peer:
+            peer_object = self.find_friend_by_id_or_username(peer)
+            if peer_object:
+                receiver = peer_object.id
+        else:
+            if isinstance(self.view.layout.current_tile, ChatTile):
+                receiver = self.view.layout.current_tile.chat_with.id
+            else:
+                raise Exception(
+                    "If no chat box is focused, [peer] is required"
+                )
+
+        if receiver == self.system_user.id:
+            raise Exception("Cannot share with system user.")
+
+        if (
+            shared_friend_object == self.myself
+            or shared_friend_object == self.system_user
+        ):
+            raise Exception("Cannot share system users.")
+
+        if shared_friend_object.id == receiver:
+            raise Exception("Cannot share a friend with himself. Duh.")
+
+        self.loop.create_task(callback(receiver, shared_friend_object))
+
+    def handle_friend_sharing(
+        self, sender: str, friend_id: str, local_name: str
+    ) -> None:
+        """Handle friend sharing request from a peer.
+
+        Wrapper for async operations.
+        """
+        self.loop.create_task(
+            self._handle_friend_sharing(
+                sender=sender, friend_id=friend_id, local_name=local_name
+            )
+        )
+
+    async def _handle_friend_sharing(
+        self, sender: str, friend_id: str, local_name: str
+    ) -> None:
+        """Handle friend sharing request from a peer."""
+        sender_object = self.db_manager.get_friend(sender)
+
+        # unknown user
+        if not sender_object:
+            return
+
+        chats = self.view.find_chats(sender_object)
+        if len(chats) == 0:
+            self.view.add_chat(chat_with=sender_object)
+            chats = self.view.find_chats(sender_object)
+        chat = chats[0]
+
+        await chat.is_prompting.acquire()
+
+        username = f"{sender_object.username}.{local_name}"
+        key = friend_id
+
+        decision: Optional[bool] = None
+        col = sender_object.color
+
+        while decision is None:
+            answer = await chat.prompt(
+                f"User "
+                f"{getattr(self.term, col)(sender_object.username)} "
+                f"wants to share his {local_name} contact with you. "
+                f"Do you want to accept? y/n",
+                self.term,
+            )
+            if "y" in answer:
+                decision = True
+            elif "n" in answer:
+                decision = False
+
+        color = ""
+        if decision:
+            self.add_friend(username=username, key=key, color=color)
+
+        chat.is_prompting.release()
+
+    def find_friend_by_id_or_username(
+        self, id_or_username: str
+    ) -> Optional[Friend]:
+        """Find user in the database with provided id or username."""
+        friend_object = self.db_manager.get_friend(id=id_or_username)
+        if not friend_object:
+            # username was provided or user not in db
+            friend_object = self.get_friend_by_username(id_or_username)
+        return friend_object
+
     def set_self_user_id(self, key: str) -> None:
         """Set given key as identity user's public key."""
         self.self_user_id = key
@@ -262,6 +380,11 @@ class UserInterface:
                 "brown",
                 "yellow",
                 "white",
+                "salmon",
+                "chocolate",
+                "webgreen",
+                "aquamarine",
+                "hotpink",
             ]
             color = choice(colors)
 
@@ -285,20 +408,12 @@ class UserInterface:
 
     def remove_friend(self, friend: str) -> None:
         """Remove given key from friendslist."""
-        # if not key and isinstance(self.view.layout.current_tile, ChatTile):
-        #     friend = self.view.layout.current_tile.chat_with
-        #     friends = self.get_friends()
-        #     if friend in friends:
-        #         key = friend.id
-        #     else:
-        #         raise Exception("Key is required if no chat is focused.")
-
-        if not self.db_manager.get_friend(id=friend):
-            # user either not in db or username was provided
-            friend_object = self.get_friend_by_username(friend)
-            if not friend_object:
-                raise Exception("Friend not in database.")
-            friend_id = friend_object.id
+        friend_object = self.find_friend_by_id_or_username(friend)
+        if not friend_object:
+            raise Exception("Friend not in database.")
+        if friend_object == self.myself or friend_object == self.system_user:
+            raise Exception("Cannot remove system users.")
+        friend_id = friend_object.id
 
         # close all chats with that user
         chats = self.view.find_chats(friend_id)
@@ -365,10 +480,12 @@ class UserInterface:
 
     def show_help(self) -> None:
         """Show help for slash commands."""
-        self.on_system_message_received(
-            message=f"-----{self.term.bold_underline('Commands:')}-----"
+        full_message = f"-----{self.term.bold_underline('Commands:')}-----\n"
+        full_message += self.term.red(
+            self.term.ljust("/comm", 8)
+            + self.term.ljust(self.term.bold("REQUIRED,[optional]"), 16)
+            + " description\n"
         )
-
         for name, command in self.slash_cmds.items():
             message = self.term.ljust(self.term.pink_underline("/" + name), 8)
 
@@ -380,10 +497,12 @@ class UserInterface:
                 else "[" + x[0].lower() + "]"
                 for x in args
             ]
-            args_as_str = ",".join(args_list)
-            message += self.term.ljust(args_as_str + " ", 16)
+            args_as_str = self.term.bold(",".join(args_list))
+            message += self.term.ljust(args_as_str, 16) + " " * 4
             message += command.description
-            self.on_system_message_received(message=message)
+            full_message += message + "\n"
+
+        self.on_system_message_received(message=full_message)
 
     def on_system_message_received(
         self, message: str, relevant_user: Union[Friend, str, None] = None
@@ -686,14 +805,14 @@ class UserInterface:
                         self.on_system_message_received(
                             message=self.term.red(
                                 f"Unknown command: /{input_text[0]}. "
-                                f"Input {self.term.purple('/help')} "
+                                f"Type {self.term.purple('/help')} "
                                 f"to see available commands."
                             )
                         )
                 except Exception as ex:
                     self.on_system_message_received(
                         message=self.term.red(
-                            "Error parsing slash command: " + ex.args[0]
+                            "Error executing slash command: " + ex.args[0]
                         )
                     )
 
@@ -724,8 +843,12 @@ class UserInterface:
                 if tile and isinstance(tile, ChatTile) and input_text != "":
                     if isinstance(input_text, str):
                         input_text = input_text.strip()
-                    # handle buffer scroll
-                    if input_text == self.term.KEY_UP:
+
+                    if tile.is_prompting.locked() and isinstance(
+                        input_text, str
+                    ):
+                        await tile.consume_input(input_text, self.term)
+                    elif input_text == self.term.KEY_UP:
                         tile.increment_offset()
                         await tile.render(self.term)
                     elif input_text == self.term.KEY_DOWN:

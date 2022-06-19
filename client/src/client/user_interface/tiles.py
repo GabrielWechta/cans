@@ -1,9 +1,8 @@
 """Tile classes for emulating independent I/O widgets of specified size."""
 
 import math
-from asyncio import BaseEventLoop, Queue, run_coroutine_threadsafe
+from asyncio import BaseEventLoop, Lock, Queue, run_coroutine_threadsafe
 from collections import namedtuple
-from datetime import datetime
 from typing import Any, Callable, List, Optional, Tuple
 
 from blessed import Terminal, keyboard
@@ -673,10 +672,26 @@ class ChatTile(Tile):
         Tile.__init__(self, *args, **kwargs)
         self._buffer = buffer
         self.buffer_offset = 0
-        self.new_messages: Queue = Queue()
         self.chat_with = chat_with
         self.myself = identity
         self._current_buffer: List[BufferItem] = []
+        self.is_prompting = Lock()
+        self.prompt_message = ""
+        self._prompt_queue: Queue = Queue()
+
+    async def prompt(self, prompt_message: str, t: Terminal) -> str:
+        """Prompt user for some fast input."""
+        # clear queue
+        while not self._prompt_queue.empty():
+            await self._prompt_queue.get()
+
+        self.prompt_message = prompt_message
+        await self.render(t)
+        input = await self._prompt_queue.get()
+        self.prompt_message = ""
+
+        await self.render(t)
+        return input
 
     @property
     def buffer(self) -> List[Message]:
@@ -731,26 +746,14 @@ class ChatTile(Tile):
         await self.render(t)
 
     async def consume_input(self, inp: str, t: Terminal) -> None:
-        """
-        Consume user input.
-
-        right not just add message to a queue, UI manager should
-        recover it, and then send, put into DB etc
-        """
+        """Consume user input."""
         # for debug add message to buffer
-        await self.add_message_to_buffer(
-            Message(
-                from_user=Friend(username="Alice", id="", color=""),
-                to_user=Friend(username="Alice", id="", color=""),
-                body=inp,
-                date=datetime.now(),
-            )
-        )
+        await self._prompt_queue.put(inp)
 
     async def render_message(self, message: Message) -> bool:
         """Rerender just one message from current buffer."""
-        filtered_buffer = filter(
-            lambda x: x.message == message, self._current_buffer
+        filtered_buffer = list(
+            filter(lambda x: x.message == message, self._current_buffer)
         )
         t = Terminal()
 
@@ -767,9 +770,18 @@ class ChatTile(Tile):
                 printable_message = self._construct_message_to_print(
                     t, message_item.message
                 )
+
                 for i, line in enumerate(printable_message):
+                    if i > message_item.y_pos:
+                        break
+
                     print(line, end="")
-                    print(t.move_xy(self.real_x, y_pos + i), end="")
+                    print(
+                        t.move_xy(
+                            self.real_x, y_pos + message_item.y_pos - i - 1
+                        ),
+                        end="",
+                    )
         return True
 
     def _construct_message_to_print(
@@ -806,15 +818,27 @@ class ChatTile(Tile):
         # construct message buffer
         buffer: List[BufferItem] = []
         printable_messages: List[str] = []
+
+        prompt_message = []
+        if self.prompt_message:
+            prompt_message = (
+                t.wrap(t.red(self.prompt_message), self.real_width)
+                if self.real_width > 0
+                else []
+            )
+            prompt_message.reverse()
+
+        max_y = self.real_height - 1 - len(prompt_message)
         for i in range(self.buffer_offset, len(self._buffer)):
             mes = self._buffer[i]
-            buffer.append(BufferItem(mes, len(printable_messages)))
+            buffer.append(BufferItem(mes, max_y - len(printable_messages)))
 
             printable_messages += self._construct_message_to_print(t, mes)
             if len(printable_messages) >= self.real_height:
                 break
 
         self._current_buffer = buffer
+        printable_messages = prompt_message + printable_messages
         return printable_messages
 
     async def render(self, t: Terminal) -> None:

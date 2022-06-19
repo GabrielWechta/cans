@@ -11,7 +11,7 @@ from olm import OlmAccountError
 from peewee import DatabaseError
 
 from common.keys import digest_key
-from common.messages import CansMsgId
+from common.messages import CansMsgId, ShareFriend
 
 from .backup_files import attempt_decrypting_priv_key_backup_files
 from .database_manager_client import DatabaseManager
@@ -47,6 +47,7 @@ class Client:
             input_callbacks={
                 "upstream_message": self._handle_upstream_message,
                 "graceful_shutdown": self._do_graceful_shutdown,
+                "share_friend": self._send_share_friend_message,
             },
             db_manager=self.db_manager,
             first_startup=self.startup.is_first_startup(),
@@ -291,8 +292,11 @@ class Client:
                     payload, message.payload["peer"]
                 )
             elif message.header.msg_id == CansMsgId.SHARE_FRIEND:
-                # TODO: Implement me!
-                self.log.critical("SHARE_FRIEND handler: Implement me!")
+                self.ui.handle_friend_sharing(
+                    sender=message.header.sender,
+                    friend_id=message.payload["friend"],
+                    local_name=message.payload["name"],
+                )
             elif message.header.msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
                 self.ui.view.update_message_status(
                     chat_with=message.header.sender,
@@ -336,6 +340,23 @@ class Client:
         self.log.debug(
             f"Sending message to {message.header.receiver}"
             + f" (cookie: {cookie})..."
+        )
+
+        await self.session_manager.send_message(message)
+
+    async def _send_share_friend_message(
+        self, receiver: str, shared_friend: Friend
+    ) -> None:
+        """Send a friend sharing message."""
+        message = ShareFriend(
+            receiver=receiver,
+            shared_friend=shared_friend.id,
+            local_name=shared_friend.username,
+        )
+
+        self.log.debug(
+            f"Sending ShareFriend message to {receiver}"
+            + f" (Shared friend: {shared_friend.id})..."
         )
 
         await self.session_manager.send_message(message)
