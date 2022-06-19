@@ -449,9 +449,15 @@ class SessionManager:
         """Handle message type SHARE_FRIEND."""
         check_payload(message, ShareFriend)
         sender = message.header.sender
+        # Decrypt the username as viewed by the sender
+        message.payload["name"] = self._decrypt_text(
+            sender, message.payload["name"]
+        )
+
         friend = message.payload["friend"]
         name = message.payload["name"]
         self.log.info(f"'{sender} shared their friend {friend} ({name})")
+
         # Nothing to do about this at session manager level - 'friends' is
         # upper-layer concept - session manager is oblivious to it
         await self.downstream_system_message_queue.put(message)
@@ -573,6 +579,12 @@ class SessionManager:
         elif msg_id == CansMsgId.SESSION_ESTABLISHED:
             message.payload["magic"] = self._encrypt_text(
                 receiver, message.payload["magic"]
+            )
+        elif msg_id == CansMsgId.SHARE_FRIEND:
+            # Encrypt the local name of the friend to protect
+            # personal information
+            message.payload["name"] = self._encrypt_text(
+                receiver, message.payload["name"]
             )
         elif msg_id == CansMsgId.ACK_MESSAGE_DELIVERED:
             # Send the message in plaintext
