@@ -55,7 +55,7 @@ class Client:
 
         # Check if necessary files exist
         if self.startup.is_first_startup():
-            # Promt user for username, password etc in blocking mode
+            # Prompt user for username, password etc in blocking mode
             (
                 user_username,
                 user_passphrase,
@@ -104,11 +104,18 @@ class Client:
 
         # handle consecutive startups
         else:
-            # TODO: this while loop
             feedback = ""
             retries = 3
+            password_needed = False
 
-            while True:
+            try:
+                self.password = self.startup.get_key()
+                self._load_data(password=self.password)
+            except Exception as e:
+                self.log.debug(f"{e}")
+                password_needed = True
+
+            while password_needed:
                 user_passphrase = self.ui.blocking_prompt(
                     "password", feedback=feedback
                 )
@@ -151,24 +158,7 @@ class Client:
                 self.password = self.startup.get_key(user_passphrase)
 
                 try:
-                    self.priv_key, self.pub_key = self.startup.load_key_pair(
-                        self.password
-                    )
-
-                    self.app_password = self.startup.get_app_password(
-                        self.priv_key
-                    )
-
-                    # init db manager
-                    self.db_manager.open(passphrase=self.app_password)
-
-                    self.system = self.db_manager.get_friend(id="system")
-                    self.myself = self.db_manager.get_friend(id="myself")
-
-                    self.account = self.startup.load_crypto_account(
-                        self.app_password
-                    )
-
+                    self._load_data(password=self.password)
                 except ValueError as e:
                     # Corrupted keys or wrong password
                     if retries > 0:
@@ -229,6 +219,20 @@ class Client:
             keys=(self.priv_key, self.pub_key),
             account=self.account,
         )
+
+    def _load_data(self, password: str = "") -> None:
+        """Load database and keys to the client."""
+        self.priv_key, self.pub_key = self.startup.load_key_pair(password)
+
+        self.app_password = self.startup.get_app_password(self.priv_key)
+
+        # init db manager
+        self.db_manager.open(passphrase=self.app_password)
+
+        self.system = self.db_manager.get_friend(id="system")
+        self.myself = self.db_manager.get_friend(id="myself")
+
+        self.account = self.startup.load_crypto_account(self.app_password)
 
     def run(self) -> None:
         """Run dummy client application."""
