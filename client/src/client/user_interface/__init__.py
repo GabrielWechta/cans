@@ -363,10 +363,14 @@ class UserInterface:
         if not key and isinstance(self.view.layout.current_tile, ChatTile):
             friend = self.view.layout.current_tile.chat_with
             friends = self.get_friends()
-            if friend not in friends:
+            if friend not in friends and not (
+                friend == self.system_user or friend == self.myself
+            ):
                 key = friend.id
             else:
                 raise Exception("Key is required.")
+        if not key:
+            raise Exception("Key is required.")
 
         if not color:
             colors = [
@@ -388,8 +392,11 @@ class UserInterface:
             color = choice(colors)
 
         assert self.validate_color(color), "Color unknown"
-        # TODO: make it so it has a different message when
-        # adding an already used key
+
+        if self.db_manager.get_friend(key):
+            # if user already exists
+            raise Exception("User with given id already exists!")
+
         new_user = self.db_manager.add_friend(
             username=username, id=key, color=color, date_added=datetime.now()
         )
