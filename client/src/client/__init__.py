@@ -48,9 +48,9 @@ class Client:
                 "upstream_message": self._handle_upstream_message,
                 "graceful_shutdown": self._do_graceful_shutdown,
                 "share_friend": self._send_share_friend_message,
+                "add_friend": self._add_friend,
             },
             db_manager=self.db_manager,
-            first_startup=self.startup.is_first_startup(),
         )
 
         # Check if necessary files exist
@@ -183,42 +183,45 @@ class Client:
 
                 break
 
-        # forward system and myself to UI
+        # Complete UI startup
         assert self.myself and self.system
         self.ui.set_identity_user(self.myself)
         self.ui.set_system_user(self.system)
 
-        # tell ui all is fine~
         self.ui.complete_startup()
         self.ui.set_self_user_id(digest_key(self.pub_key))
 
-        # rest of init
-        self.echo_peer_id = (
-            "e12dc2da85f995a528d34b4acdc539a720b2bc4912bc1c32c322b201134d3ed6"
-        )
+        # Fetch friends' IDs from the database
+        self.friends = {
+            friend.id for friend in self.db_manager.get_all_friends()
+        }
 
-        echo_client = self.db_manager.add_friend(
-            username="Echo",
-            id=self.echo_peer_id,
-            color="red",
-            date_added=datetime.now(),
-        )
-
-        eve_client = self.db_manager.add_friend(
-            username="Eve",
-            id="12341234",
-            color="blue",
-            date_added=datetime.now(),
-        )
-
-        assert echo_client
-        assert eve_client
-
-        # self.ui.view.add_chat(echo_client)
         self.session_manager = SessionManager(
             keys=(self.priv_key, self.pub_key),
             account=self.account,
         )
+
+    def run(self) -> None:
+        """Run dummy client application."""
+        try:
+            self.event_loop.run_until_complete(
+                asyncio.gather(  # noqa: FKA01
+                    # Connect to the server...
+                    self.session_manager.connect(
+                        url=f"wss://{self.server_hostname}:{self.server_port}",
+                        certpath=self.certpath,
+                        friends=self.friends,
+                    ),
+                    # ...and handle incoming messages
+                    self._handle_downstream_user_traffic(),
+                    self._handle_downstream_system_traffic(),
+                )
+            )
+        except Exception as e:
+            self.log.critical(
+                f"Fatal exception ({type(e).__name__}): {str(e)}"
+            )
+            self.event_loop.run_until_complete(self._do_graceful_shutdown())
 
     def _load_data(self, password: str = "") -> None:
         """Load database and keys to the client."""
@@ -233,28 +236,6 @@ class Client:
         self.myself = self.db_manager.get_friend(id="myself")
 
         self.account = self.startup.load_crypto_account(self.app_password)
-
-    def run(self) -> None:
-        """Run dummy client application."""
-        try:
-            self.event_loop.run_until_complete(
-                asyncio.gather(  # noqa: FKA01
-                    # Connect to the server...
-                    self.session_manager.connect(
-                        url=f"wss://{self.server_hostname}:{self.server_port}",
-                        certpath=self.certpath,
-                        friends={self.echo_peer_id},
-                    ),
-                    # ...and handle incoming messages
-                    self._handle_downstream_user_traffic(),
-                    self._handle_downstream_system_traffic(),
-                )
-            )
-        except Exception as e:
-            self.log.critical(
-                f"Fatal exception ({type(e).__name__}): {str(e)}"
-            )
-            self.event_loop.run_until_complete(self._do_graceful_shutdown())
 
     async def _handle_downstream_user_traffic(self) -> None:
         """Handle downstream user messages."""
@@ -364,6 +345,10 @@ class Client:
         )
 
         await self.session_manager.send_message(message)
+
+    async def _add_friend(self, friend: Friend) -> None:
+        """Add a friend at session manager level."""
+        await self.session_manager.add_friend(friend.id)
 
     async def _do_graceful_shutdown(self) -> None:
         """Shut down the application gracefully."""

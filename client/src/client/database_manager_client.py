@@ -98,7 +98,7 @@ class DatabaseManager:
             self.log.debug(f"No friend with {id} key in database.")
             return None
 
-    def get_all_friends(self) -> list:
+    def get_all_friends(self) -> List[Friend]:
         """Get a list of friends from the database."""
         return list(
             Friend.select().where(

@@ -30,7 +30,6 @@ class UserInterface:
         loop: Union[asyncio.BaseEventLoop, asyncio.AbstractEventLoop],
         input_callbacks: Mapping[str, Callable],
         db_manager: DatabaseManager,
-        first_startup: bool,
     ) -> None:
         """Instantiate a UI."""
         # Set terminal and event loop
@@ -395,6 +394,10 @@ class UserInterface:
             username=username, id=key, color=color, date_added=datetime.now()
         )
         assert new_user, "Something went wrong with adding new user"
+
+        # add the friend at session manager level
+        callback = self.input_callbacks["add_friend"]
+        self.loop.create_task(callback(new_user))
 
         # repoen any existing chats
         chats = self.view.find_chats(key)
