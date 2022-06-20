@@ -569,6 +569,8 @@ class UserInterface:
         except IndexError:
             return
 
+        self.loop.create_task(self.view.layout.render_all())
+
     def reopen_tile(self) -> None:
         """Reopen last closed tile."""
         target = self.view.layout.current_tile
@@ -806,7 +808,6 @@ class UserInterface:
                         cmd = self.slash_cmds[input_text[0]].callback
                         cmd(*input_text[1])
 
-                        # await self.view.layout.render_all()
                     else:
                         self.on_system_message_received(
                             message=self.term.red(
