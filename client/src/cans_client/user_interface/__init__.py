@@ -290,7 +290,10 @@ class UserInterface:
 
         color = ""
         if decision:
-            self.add_friend(username=username, key=key, color=color)
+            try:
+                self.add_friend(username=username, key=key, color=color)
+            except BaseException as ex:
+                self.on_system_message_received(message=self.term.red(str(ex)))
 
         chat.is_prompting.release()
 
