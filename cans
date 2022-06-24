@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+CANS_DIR=$(dirname $(realpath $0))
+
+set -a
+. $CANS_DIR/.env
+set +a
+
+# Override the server hostname to allow local Docker deployment
+export CANS_SERVER_HOSTNAME=localhost
+python3 -m cans_client

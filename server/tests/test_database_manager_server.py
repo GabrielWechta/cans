@@ -1,6 +1,6 @@
 """DatabaseManager tests."""
 
-from server.database_manager_server import DatabaseManager
+from cans_server.database_manager_server import DatabaseManager
 
 
 def test_dummy():

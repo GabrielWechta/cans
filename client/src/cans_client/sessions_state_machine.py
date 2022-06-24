@@ -34,14 +34,13 @@ POTENTIAL_SESSION -----------------------> ACTIVE_SESSION
 import logging
 from typing import Callable, Dict, List
 
-from olm import Account, OlmMessage, OlmPreKeyMessage
-
-from common.messages import (
+from cans_common.messages import (
     CANS_PEER_HANDSHAKE_MAGIC,
     CansMessage,
     PeerHello,
     SessionEstablished,
 )
+from olm import Account, OlmMessage, OlmPreKeyMessage
 
 from .e2e_encryption import DoubleRatchetSession
 

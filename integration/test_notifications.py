@@ -7,12 +7,11 @@ from typing import Callable, List, Set
 
 import pytest
 import websockets.client as ws
+from cans_client import Client
+from cans_client.session_manager_client import SessionManager
+from cans_common.keys import EcPemKeyPair, digest_key, generate_keys
+from cans_common.messages import CansMessage, CansMsgId, cans_recv
 from olm import Account
-
-from client import Client
-from client.session_manager_client import SessionManager
-from common.keys import EcPemKeyPair, digest_key, generate_keys
-from common.messages import CansMessage, CansMsgId, cans_recv
 
 
 class NotificationsOkException(Exception):

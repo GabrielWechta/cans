@@ -4,9 +4,8 @@ import os
 import sys
 from random import choice, randrange
 
+from cans_common.keys import digest_key, generate_keys
 from olm import Account
-
-from common.keys import digest_key, generate_keys
 
 from .session_manager_client import SessionManager, ShareFriend
 

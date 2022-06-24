@@ -3,7 +3,7 @@
 from enum import IntEnum, auto, unique
 from typing import Any, Dict, Union
 
-from common.messages import CansMessage
+from cans_common.messages import CansMessage
 
 
 @unique

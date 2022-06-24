@@ -6,7 +6,7 @@ services:
       context: .
       target: server
     container_name: ${CANS_SERVER_HOSTNAME}
-    command: python -u -m server
+    command: python -u -m cans_server
     env_file:
       - .env
     networks:
@@ -23,7 +23,7 @@ services:
     container_name: cans-echo-service
     depends_on:
       - cans-server
-    command: python -u -m client.echo_client
+    command: python -u -m cans_client.echo_client
     env_file:
       - .env
     networks:
@@ -36,7 +36,7 @@ services:
     container_name: cans-spammer-service
     depends_on:
       - cans-server
-    command: python -u -m client.spammer_client
+    command: python -u -m cans_client.spammer_client
     env_file:
       - .env
     networks:

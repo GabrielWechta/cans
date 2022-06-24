@@ -6,13 +6,12 @@ import os
 
 import pytest
 import websockets.client as ws
+from cans_client import Client
+from cans_client.session_manager_client import SessionManager
+from cans_common.connection import CansStatusCode
+from cans_common.keys import EcPemKeyPair, generate_keys
 from olm import Account
 from websockets.exceptions import ConnectionClosed
-
-from client import Client
-from client.session_manager_client import SessionManager
-from common.connection import CansStatusCode
-from common.keys import EcPemKeyPair, generate_keys
 
 
 class MockSessionManager(SessionManager):

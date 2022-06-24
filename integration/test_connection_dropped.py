@@ -6,11 +6,10 @@ import os
 from typing import Callable
 
 import websockets.client as ws
+from cans_client import Client
+from cans_client.session_manager_client import SessionManager
+from cans_common.keys import EcPemKeyPair, generate_keys
 from olm import Account
-
-from client import Client
-from client.session_manager_client import SessionManager
-from common.keys import EcPemKeyPair, generate_keys
 
 
 class FaultyClientException(Exception):

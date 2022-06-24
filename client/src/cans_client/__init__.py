@@ -7,11 +7,10 @@ import os
 from datetime import datetime
 
 from blessed import Terminal
+from cans_common.keys import digest_key
+from cans_common.messages import CansMsgId, ShareFriend
 from olm import OlmAccountError
 from peewee import DatabaseError
-
-from common.keys import digest_key
-from common.messages import CansMsgId, ShareFriend
 
 from .backup_files import attempt_decrypting_priv_key_backup_files
 from .database_manager_client import DatabaseManager

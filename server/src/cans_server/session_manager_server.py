@@ -4,18 +4,17 @@ import asyncio
 import logging
 from typing import Callable, Dict, Set
 
-from websockets.exceptions import ConnectionClosed
-from websockets.server import WebSocketServerProtocol
-
-from common.keys import PublicKeysBundle
-from common.messages import (
+from cans_common.keys import PublicKeysBundle
+from cans_common.messages import (
     ActiveFriends,
     CansMessage,
     NackMessageNotDelivered,
     cans_send,
 )
-from server.session_downstream_handler import SessionDownstreamHandler
-from server.session_upstream_handler import SessionUpstreamHandler
+from cans_server.session_downstream_handler import SessionDownstreamHandler
+from cans_server.session_upstream_handler import SessionUpstreamHandler
+from websockets.exceptions import ConnectionClosed
+from websockets.server import WebSocketServerProtocol
 
 from .client_session import ClientSession
 from .database_manager_server import DatabaseManager

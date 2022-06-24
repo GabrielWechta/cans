@@ -1,6 +1,6 @@
 """ClientSession tests."""
 
-from server.client_session import ClientSession
+from cans_server.client_session import ClientSession
 
 
 def test_dummy():

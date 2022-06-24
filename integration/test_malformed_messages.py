@@ -8,19 +8,18 @@ from typing import Callable, Set
 
 import pytest
 import websockets.client as ws
-from olm import Account
-from websockets.exceptions import ConnectionClosed
-
-from client import Client
-from client.session_manager_client import SessionManager
-from common.connection import CansStatusCode
-from common.keys import EcPemKeyPair, digest_key, generate_keys
-from common.messages import (
+from cans_client import Client
+from cans_client.session_manager_client import SessionManager
+from cans_common.connection import CansStatusCode
+from cans_common.keys import EcPemKeyPair, digest_key, generate_keys
+from cans_common.messages import (
     CansMessage,
     CansMsgId,
     NackMessageNotDelivered,
     cans_send,
 )
+from olm import Account
+from websockets.exceptions import ConnectionClosed
 
 
 class MockSessionManager(SessionManager):
