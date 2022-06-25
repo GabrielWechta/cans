@@ -50,7 +50,7 @@ sudo make
 ### Install the application
 
 ```bash
-sudp make install
+sudo make install
 ```
 
 ## Contributing for Devs

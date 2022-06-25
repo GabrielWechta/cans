@@ -1,8 +1,8 @@
 
 default:
+	./bootstrap
 	docker-compose build cans-server
 	docker-compose build cans-echo-service
-	./bootstrap
 
 install:
 # Install the client
