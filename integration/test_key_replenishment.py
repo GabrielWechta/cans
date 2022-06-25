@@ -6,12 +6,11 @@ import os
 from typing import Set
 
 import pytest
+from cans_client import Client
+from cans_client.session_manager_client import SessionManager
+from cans_common.keys import EcPemKeyPair, digest_key, generate_keys
+from cans_common.messages import CansMessage
 from olm import Account
-
-from client import Client
-from client.session_manager_client import SessionManager
-from common.keys import EcPemKeyPair, digest_key, generate_keys
-from common.messages import CansMessage
 
 
 class KeyReplenishmentOkException(Exception):

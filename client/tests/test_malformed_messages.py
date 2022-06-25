@@ -3,11 +3,10 @@
 
 import asyncio
 
+from cans_client.session_manager_client import SessionManager
+from cans_common.keys import digest_key, generate_keys
+from cans_common.messages import CansMessage, CansMsgId
 from olm import Account
-
-from client.session_manager_client import SessionManager
-from common.keys import digest_key, generate_keys
-from common.messages import CansMessage, CansMsgId
 
 
 def test_malformed_payload():

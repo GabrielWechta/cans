@@ -1,6 +1,6 @@
 """SessionManager tests."""
 
-from server.session_manager_server import SessionManager
+from cans_server.session_manager_server import SessionManager
 
 
 def test_dummy():

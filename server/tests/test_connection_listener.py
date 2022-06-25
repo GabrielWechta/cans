@@ -1,6 +1,6 @@
 """ConnectionListener tests."""
 
-from server.connection_listener import ConnectionListener
+from cans_server.connection_listener import ConnectionListener
 
 
 def test_dummy():

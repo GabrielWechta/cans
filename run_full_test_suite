@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+echo "Initializing a virtual environment..."
+python3 -m venv venv
+. venv/bin/activate
 echo "Installing development dependencies..."
 pip install -r requirements-dev.txt || { echo "Failed to install required dependencies!" && exit 1; }
 echo "Running client application module tests..."
@@ -10,3 +13,6 @@ echo "Running server application module tests..."
 pytest server
 echo "Running integration tests..."
 ./run_integration_tests
+echo "Leaving the virtual environment..."
+deactivate
+echo "Cleaning up the virtual environment"

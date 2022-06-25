@@ -3,8 +3,8 @@
 import logging
 from typing import Callable, Dict
 
-from common.connection import CansStatusCode
-from common.messages import (
+from cans_common.connection import CansStatusCode
+from cans_common.messages import (
     AddFriend,
     CansMalformedMessageError,
     CansMessage,
@@ -18,9 +18,9 @@ from common.messages import (
     cans_recv,
     check_payload,
 )
-from server.client_session import ClientSession
-from server.database_manager_server import DatabaseManager
-from server.session_event import (
+from cans_server.client_session import ClientSession
+from cans_server.database_manager_server import DatabaseManager
+from cans_server.session_event import (
     LoginEvent,
     LogoutEvent,
     MessageEvent,

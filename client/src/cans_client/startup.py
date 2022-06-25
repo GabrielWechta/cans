@@ -11,15 +11,14 @@ from pathlib import Path
 from shutil import rmtree
 from typing import List
 
-from Cryptodome.Cipher import AES, _mode_gcm
-from olm import Account
-
-from common.keys import (
+from cans_common.keys import (
     EcPemKeyPair,
     generate_keys,
     get_private_key_from_pem,
     get_public_key_pem,
 )
+from Cryptodome.Cipher import AES, _mode_gcm
+from olm import Account
 
 from .backup_files import gen_save_priv_key_backup_files
 

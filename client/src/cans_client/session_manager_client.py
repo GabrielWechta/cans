@@ -6,16 +6,14 @@ import ssl
 from typing import Set, Tuple
 
 import websockets.client as ws
-from olm import Account, OlmMessage, OlmSessionError
-
-from common.keys import (
+from cans_common.keys import (
     EcPemKeyPair,
     digest_key,
     get_private_key_from_pem,
     get_schnorr_commitment,
     get_schnorr_response,
 )
-from common.messages import (
+from cans_common.messages import (
     AckMessageDelivered,
     ActiveFriends,
     AddFriend,
@@ -41,6 +39,7 @@ from common.messages import (
     cans_send,
     check_payload,
 )
+from olm import Account, OlmMessage, OlmSessionError
 
 from .e2e_encryption import TripleDiffieHellmanInterface
 from .sessions_state_machine import CansSessionError, SessionsStateMachine

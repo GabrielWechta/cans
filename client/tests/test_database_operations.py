@@ -3,9 +3,8 @@
 from datetime import datetime
 
 import pytest
-
-from client.database_manager_client import DatabaseManager
-from client.models import CansMessageState, Friend, Message
+from cans_client.database_manager_client import DatabaseManager
+from cans_client.models import CansMessageState, Friend, Message
 
 
 @pytest.fixture(scope="session")

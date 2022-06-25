@@ -39,6 +39,20 @@
   </ol>
 </details>
 
+## Usage:
+
+### Build and install dependencies
+
+```bash
+sudo make
+```
+
+### Install the application
+
+```bash
+sudo make install
+```
+
 ## Contributing for Devs
 
 ### Bootstrap the repository

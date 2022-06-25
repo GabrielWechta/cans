@@ -10,10 +10,9 @@ import ssl
 from typing import Dict, Set, Tuple
 
 import websockets.server as ws
-
-from common.connection import CansStatusCode
-from common.keys import digest_key, get_schnorr_challenge, schnorr_verify
-from common.messages import (
+from cans_common.connection import CansStatusCode
+from cans_common.keys import digest_key, get_schnorr_challenge, schnorr_verify
+from cans_common.messages import (
     CansMessageException,
     SchnorrChallenge,
     SchnorrCommit,

@@ -39,11 +39,3 @@ make olm-python3 || { echo "Error! Failed to build Python bindings for olm!" }
 echo "olm bindings built successfully"
 
 cd ../../..
-
-echo "Initializing a virtual environment..."
-python3 -m venv venv
-. venv/bin/activate
-echo "Installing requirements-dev.txt..."
-pip install -r requirements-dev.txt
-echo "Leaving the virtual environment..."
-deactivate

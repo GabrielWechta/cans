@@ -3,12 +3,11 @@ import glob
 from pathlib import Path
 
 import pytest
-
-from client.backup_files import (
+from cans_client.backup_files import (
     attempt_decrypting_priv_key_backup_files,
     gen_save_priv_key_backup_files,
 )
-from client.startup import Startup
+from cans_client.startup import Startup
 
 
 @pytest.fixture

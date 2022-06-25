@@ -3,14 +3,14 @@
 import logging
 from typing import Any, Callable, Dict
 
-from common.messages import (
+from cans_common.messages import (
     CansMessage,
     PeerLogin,
     PeerLogout,
     ReplenishOneTimeKeysReq,
     cans_send,
 )
-from server.client_session import ClientSession
+from cans_server.client_session import ClientSession
 
 from .session_event import EventType, SessionEvent
 
